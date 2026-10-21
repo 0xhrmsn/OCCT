@@ -2576,12 +2576,29 @@ static void AddDegeneratedEdge(TopoDS_Face& F, TopoDS_Wire& W)
 
   bool Change = true;
 
-  while (Change)
+  // Gap closed by the last inserted degenerated edge. If the explorer does not traverse the inserted
+  // edge, the same gap is found again on the next pass and every pass adds one more edge, so the loop
+  // never ends. In that case the useless edge is removed and the gap is left as it is.
+  TopoDS_Edge LastNE;
+  gp_Pnt2d    LastGapFrom, LastGapTo;
+  const auto  isLastGap = [&](const gp_Pnt2d& theFrom, const gp_Pnt2d& theTo) {
+    return !LastNE.IsNull() && theFrom.IsEqual(LastGapFrom, TolConf)
+           && theTo.IsEqual(LastGapTo, TolConf);
+  };
+  // At most one degenerated edge per vertex of the initial wire can be missing.
+  int NbInsertMax = 1;
+  for (TopoDS_Iterator anIt(W); anIt.More(); anIt.Next())
+  {
+    ++NbInsertMax;
+  }
+
+  while (Change && NbInsertMax-- > 0)
   {
     Change = false;
     BRepTools_WireExplorer WE(W, F);
     gp_Pnt2d               PF, PrevP, P1, P2;
     TopoDS_Vertex          VF, V1, V2;
+    bool                   NoProgress = false;
 
     for (; WE.More(); WE.Next())
     {
@@ -2604,6 +2621,11 @@ static void AddDegeneratedEdge(TopoDS_Face& F, TopoDS_Wire& W)
       {
         if (!P1.IsEqual(PrevP, TolConf))
         {
+          if (isLastGap(PrevP, P1))
+          {
+            NoProgress = true;
+            break;
+          }
           // degenerated edge to be inserted.
           Change = true;
           gp_Vec2d                         V(PrevP, P1);
@@ -2616,15 +2638,28 @@ static void AddDegeneratedEdge(TopoDS_Face& F, TopoDS_Wire& W)
           B.Add(NE, V1.Oriented(TopAbs_REVERSED));
           B.Range(NE, f, l);
           B.Add(W, NE);
+          LastNE      = NE;
+          LastGapFrom = PrevP;
+          LastGapTo   = P1;
           break;
         }
       }
       PrevP = P2;
     }
+    if (NoProgress)
+    {
+      B.Remove(W, LastNE);
+      break;
+    }
     if (!Change && VF.IsSame(V2))
     { // closed
       if (!PF.IsEqual(P2, TolConf))
       {
+        if (isLastGap(P2, PF))
+        {
+          B.Remove(W, LastNE);
+          break;
+        }
         // Degenerated edge to be inserted.
         Change = true;
         gp_Vec2d                         V(P2, PF);
@@ -2637,6 +2672,9 @@ static void AddDegeneratedEdge(TopoDS_Face& F, TopoDS_Wire& W)
         B.Add(NE, VF.Oriented(TopAbs_REVERSED));
         B.Range(NE, f, l);
         B.Add(W, NE);
+        LastNE      = NE;
+        LastGapFrom = P2;
+        LastGapTo   = PF;
       }
     }
   }
