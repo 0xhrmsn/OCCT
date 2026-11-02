@@ -817,9 +817,14 @@ void ChFi3d_Builder::UpdateTolesp()
   // tolesp = Precision::Infinite();
   for (itel.Initialize(myListStripe); itel.More(); itel.Next())
   {
-    occ::handle<ChFiDS_Stripe>& curStripe             = itel.ChangeValue();
-    occ::handle<ChFiDS_Spine>&  Spine                 = curStripe->ChangeSpine();
-    const double                current_stripe_tolesp = Spine->GetTolesp();
+    occ::handle<ChFiDS_Stripe>& curStripe = itel.ChangeValue();
+    occ::handle<ChFiDS_Spine>&  Spine     = curStripe->ChangeSpine();
+    // A failed Compute() can leave stripes without a spine; Reset() removes them afterwards.
+    if (Spine.IsNull())
+    {
+      continue;
+    }
+    const double current_stripe_tolesp = Spine->GetTolesp();
     if (tolesp > current_stripe_tolesp)
     {
       tolesp = current_stripe_tolesp;
