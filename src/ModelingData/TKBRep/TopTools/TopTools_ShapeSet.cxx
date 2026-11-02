@@ -509,8 +509,8 @@ void TopTools_ShapeSet::Write(Standard_OStream& OS, const Message_ProgressRange&
   // always use C locale for writing shapes
   std::locale anOldLocale = OS.imbue(std::locale::classic());
 
-  // use 15-digit precision
-  std::streamsize prec = OS.precision(15);
+  // use 17-digit precision: shortest that restores every double exactly (as GeomTools sets)
+  std::streamsize prec = OS.precision(17);
 
   // write the copyright
   OS << "\n" << THE_ASCII_VERSIONS[myFormatNb] << "\n";

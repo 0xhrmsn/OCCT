@@ -182,7 +182,8 @@ void TopTools_LocationSet::Write(Standard_OStream&            OS,
                                  const Message_ProgressRange& theProgress) const
 {
 
-  std::streamsize prec = OS.precision(15);
+  // 17 digits restore every double exactly (as GeomTools sets)
+  std::streamsize prec = OS.precision(17);
 
   int i, nbLoc = myMap.Extent();
   OS << "Locations " << nbLoc << "\n";

@@ -40,6 +40,7 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <algorithm>
 #include <cmath>
 #include <sstream>
 #include <string>
@@ -195,6 +196,50 @@ TEST(BRepToolsTest, OversizedLocationValueDoesNotAddTransform)
   EXPECT_NO_THROW(aLocations.Read(anOversized));
   EXPECT_TRUE(anOversized.fail());
   EXPECT_TRUE(aLocations.Location(1).IsIdentity());
+}
+
+// Tolerances and locations were written with 15 significant digits, so a text round trip changed
+// them in the last bits (geometry already used 17). The tolerance must exceed the default 1e-7:
+// UpdateVertex() only raises a tolerance.
+TEST(BRepTools_Test, WriteRead_TolerancesExactLocationPrecise)
+{
+  const double aTol = 1.0e-5 / 3.0;
+  TopoDS_Shape aBox = BRepPrimAPI_MakeBox(10.0, 20.0, 30.0).Shape();
+  BRep_Builder aBuilder;
+  for (TopExp_Explorer anExp(aBox, TopAbs_VERTEX); anExp.More(); anExp.Next())
+  {
+    aBuilder.UpdateVertex(TopoDS::Vertex(anExp.Current()), aTol);
+  }
+  gp_Trsf aTrsf;
+  aTrsf.SetRotation(gp_Ax1(gp_Pnt(1.0 / 3.0, 0.0, 0.0), gp_Dir(1.0, 2.0, 3.0)), 0.1);
+  aTrsf.SetTranslationPart(gp_Vec(100.0 / 3.0, -2.0 / 7.0, 1.0e-3 / 3.0));
+  aBox.Move(TopLoc_Location(aTrsf));
+
+  std::ostringstream anOut;
+  BRepTools::Write(aBox, anOut);
+  std::istringstream anIn(anOut.str());
+  TopoDS_Shape       aRead;
+  BRepTools::Read(aRead, anIn, aBuilder);
+  ASSERT_FALSE(aRead.IsNull());
+
+  int aNbVertices = 0;
+  for (TopExp_Explorer anExp(aRead, TopAbs_VERTEX); anExp.More(); anExp.Next(), ++aNbVertices)
+  {
+    EXPECT_EQ(BRep_Tool::Tolerance(TopoDS::Vertex(anExp.Current())), aTol);
+  }
+  EXPECT_GT(aNbVertices, 0);
+  const gp_Trsf aReadTrsf = aRead.Location().Transformation();
+  double        aMaxDiff  = 0.0;
+  for (int aRow = 1; aRow <= 3; ++aRow)
+  {
+    for (int aCol = 1; aCol <= 4; ++aCol)
+    {
+      aMaxDiff = std::max(aMaxDiff, std::abs(aReadTrsf.Value(aRow, aCol) - aTrsf.Value(aRow, aCol)));
+    }
+  }
+  // Read() rebuilds the transformation with gp_Trsf::SetValues(), which renormalises the matrix,
+  // so exact bits are not reachable; 15 digits gave 3.6e-14, 17 digits 1.1e-16.
+  EXPECT_LE(aMaxDiff, 1.0e-15);
 }
 
 namespace
