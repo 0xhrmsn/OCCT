@@ -23,6 +23,15 @@
 
 IMPLEMENT_STANDARD_RTTIEXT(Poly_CoherentTriangulation, Standard_Transient)
 
+namespace
+{
+// A triangle may only refer to an existing node.
+bool isValidNode(const int theNode, const int theNbNodes)
+{
+  return theNode >= 0 && theNode < theNbNodes;
+}
+} // namespace
+
 //=================================================================================================
 
 Poly_CoherentTriangulation::Poly_CoherentTriangulation(
@@ -497,7 +506,9 @@ Poly_CoherentTriangle* Poly_CoherentTriangulation::AddTriangle(const int iNode0,
                                                                const int iNode2)
 {
   Poly_CoherentTriangle* pTriangle = nullptr;
-  if (iNode0 >= 0 && iNode1 >= 0 && iNode2 >= 0)
+  const int              aNbNodes  = myNodes.Length();
+  if (isValidNode(iNode0, aNbNodes) && isValidNode(iNode1, aNbNodes)
+      && isValidNode(iNode2, aNbNodes))
   {
     pTriangle = &myTriangles.Append(Poly_CoherentTriangle());
     ReplaceNodes(*pTriangle, iNode0, iNode1, iNode2);
@@ -516,7 +527,9 @@ bool Poly_CoherentTriangulation::ReplaceNodes(Poly_CoherentTriangle& theTriangle
   {
     RemoveTriangle(theTriangle);
   }
-  if (iNode0 >= 0 && iNode1 >= 0 && iNode2 >= 0)
+  const int aNbNodes = myNodes.Length();
+  if (isValidNode(iNode0, aNbNodes) && isValidNode(iNode1, aNbNodes)
+      && isValidNode(iNode2, aNbNodes))
   {
     theTriangle = Poly_CoherentTriangle(iNode0, iNode1, iNode2);
     for (int i = 0; i < 3; i++)
