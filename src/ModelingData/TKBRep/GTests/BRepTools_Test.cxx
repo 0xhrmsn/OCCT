@@ -25,6 +25,17 @@
 #include <NCollection_Array1.hxx>
 #include <OSD_Parallel.hxx>
 #include <TopoDS_Shape.hxx>
+#include <TopoDS_Face.hxx>
+#include <Poly_Triangulation.hxx>
+#include <BRepMesh_IncrementalMesh.hxx>
+#include <BinTools.hxx>
+#include <TopLoc_Location.hxx>
+#include <gp_Vec.hxx>
+#include <gp_Trsf.hxx>
+#include <gp_Ax1.hxx>
+#include <TopoDS.hxx>
+#include <TopExp_Explorer.hxx>
+#include <BRep_Tool.hxx>
 
 #include <gtest/gtest.h>
 
@@ -184,4 +195,67 @@ TEST(BRepToolsTest, OversizedLocationValueDoesNotAddTransform)
   EXPECT_NO_THROW(aLocations.Read(anOversized));
   EXPECT_TRUE(anOversized.fail());
   EXPECT_TRUE(aLocations.Location(1).IsIdentity());
+}
+
+namespace
+{
+//! True if every face of theShape has a triangulation with normals.
+bool allFacesHaveNormals(const TopoDS_Shape& theShape)
+{
+  int aNbFaces = 0;
+  for (TopExp_Explorer anExp(theShape, TopAbs_FACE); anExp.More(); anExp.Next(), ++aNbFaces)
+  {
+    TopLoc_Location                        aLoc;
+    const occ::handle<Poly_Triangulation>& aTri =
+      BRep_Tool::Triangulation(TopoDS::Face(anExp.Current()), aLoc);
+    if (aTri.IsNull() || !aTri->HasNormals())
+    {
+      return false;
+    }
+  }
+  return aNbFaces > 0;
+}
+
+//! Meshed box with normals on every face triangulation. Several faces are needed: an edge shared by
+//! two faces carries a polygon on the neighbour's triangulation, which is how that triangulation got
+//! registered before its own face (a single-face sphere does not show the defect).
+TopoDS_Shape meshedBoxWithNormals()
+{
+  const TopoDS_Shape aBox = BRepPrimAPI_MakeBox(10.0, 20.0, 30.0).Shape();
+  BRepMesh_IncrementalMesh(aBox, 0.5);
+  for (TopExp_Explorer anExp(aBox, TopAbs_FACE); anExp.More(); anExp.Next())
+  {
+    TopLoc_Location aLoc;
+    BRep_Tool::Triangulation(TopoDS::Face(anExp.Current()), aLoc)->ComputeNormals();
+  }
+  return aBox;
+}
+} // namespace
+
+// Edges are registered before their faces; the edge registered the shared triangulation
+// "without normals" first, so normals requested for the face were silently dropped.
+TEST(BRepTools_Test, WriteRead_TriangulationNormalsKept_Text)
+{
+  const TopoDS_Shape aShape = meshedBoxWithNormals();
+  ASSERT_TRUE(allFacesHaveNormals(aShape));
+
+  std::ostringstream anOut;
+  BRepTools::Write(aShape, anOut, true, true, TopTools_FormatVersion_CURRENT);
+  std::istringstream anIn(anOut.str());
+  TopoDS_Shape       aRead;
+  BRepTools::Read(aRead, anIn, BRep_Builder());
+  EXPECT_TRUE(allFacesHaveNormals(aRead));
+}
+
+TEST(BRepTools_Test, WriteRead_TriangulationNormalsKept_Binary)
+{
+  const TopoDS_Shape aShape = meshedBoxWithNormals();
+  ASSERT_TRUE(allFacesHaveNormals(aShape));
+
+  std::ostringstream anOut(std::ios::binary);
+  BinTools::Write(aShape, anOut, true, true, BinTools_FormatVersion_CURRENT);
+  std::istringstream anIn(anOut.str(), std::ios::binary);
+  TopoDS_Shape       aRead;
+  BinTools::Read(aRead, anIn);
+  EXPECT_TRUE(allFacesHaveNormals(aRead));
 }

@@ -184,10 +184,8 @@ void BRepTools_ShapeSet::AddGeometry(const TopoDS_Shape& S)
         }
         else if (CR->IsPolygonOnTriangulation())
         {
-          // NCollection_IndexedDataMap::Add() function use is correct because
-          // Bin(Brep)Tools_ShapeSet::AddGeometry() is called from Bin(Brep)Tools_ShapeSet::Add()
-          // that processes shapes recursively from complex to elementary ones.
-          // As a result, the TopAbs_FACE's will be processed earlier than the TopAbs_EDGE's.
+          // An edge can be processed before its face; the face then raises the normals flag
+          // (see the TopAbs_FACE branch below).
           // clang-format off
           myTriangulations.Add(CR->Triangulation(), false); // edge triangulation does not need normals
           // clang-format on
@@ -232,7 +230,16 @@ void BRepTools_ShapeSet::AddGeometry(const TopoDS_Shape& S)
       occ::handle<Poly_Triangulation> Tr = TF->Triangulation();
       if (!Tr.IsNull())
       {
-        myTriangulations.Add(Tr, needNormals);
+        // The triangulation may already be registered without normals by an edge of this face
+        const int anIndex = myTriangulations.FindIndex(Tr);
+        if (anIndex == 0)
+        {
+          myTriangulations.Add(Tr, needNormals);
+        }
+        else if (needNormals)
+        {
+          myTriangulations.ChangeFromIndex(anIndex) = true;
+        }
       }
     }
 
