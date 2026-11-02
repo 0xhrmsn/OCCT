@@ -5,6 +5,7 @@ set(OCCT_TKLCAF_GTests_FILES
   TDataStd_Attribute_Test.cxx
   TDataStd_TreeNode_Test.cxx
   TDF_AttributeIterator_Test.cxx
+  TDocStd_Application_Test.cxx
   TNaming_Builder_Test.cxx
   TNaming_Name_Test.cxx
 )

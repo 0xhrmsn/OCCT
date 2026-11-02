@@ -36,7 +36,9 @@ CDF_Store::CDF_Store()
 }
 
 CDF_Store::CDF_Store(const occ::handle<CDM_Document>& aDocument)
-    : myHasSubComponents(false)
+    : myHasSubComponents(false),
+      myIsMainDocument(false),
+      myStatus(PCDM_SS_No_Obj)
 {
 
   myMainDocument = aDocument;
@@ -103,6 +105,8 @@ bool CDF_Store::SetFolder(const TCollection_ExtendedString& aFolder)
     myCurrentDocument->SetRequestedFolder(theFolder);
     return true;
   }
+  // Callers such as TDocStd_Application::SaveAs() return StoreStatus() on this failure
+  myStatus = PCDM_SS_WriteFailure;
   return false;
 }
 
