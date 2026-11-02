@@ -649,6 +649,11 @@ void BRepExtrema_OverlapTool::Perform(const double theTolerance)
 {
   myTolerance = theTolerance;
 
+  // A reused tool (e.g. BRepExtrema_ShapeProximity after LoadShape1/2) must not keep the
+  // overlaps of the previous run
+  myOverlapSubShapes1.Clear();
+  myOverlapSubShapes2.Clear();
+
   myIsDone = (this->Select(mySet1->BVH(), mySet2->BVH()) > 0);
 }
 
