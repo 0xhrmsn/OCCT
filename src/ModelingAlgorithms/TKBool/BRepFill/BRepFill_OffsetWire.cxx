@@ -279,7 +279,8 @@ static bool KPartCircle(
     BRepLib::BuildCurve3d(TopoDS::Edge(myShape));
 
     myShape.Orientation(E.Orientation());
-    myShape.Location(L);
+    // No myShape.Location(L): aPlane is the located surface of the face, so the new edge is
+    // already placed; L (the edge location, which includes the face location) would move it twice.
     if (fabs(Alt) > gp::Resolution())
     {
       BRepAdaptor_Surface S(mySpine, false);
