@@ -24,6 +24,7 @@
 #include <Standard_ReadLineBuffer.hxx>
 #include <iomanip>
 #include <iostream>
+#include <locale>
 #include <cstring>
 
 namespace
@@ -34,6 +35,27 @@ static const int THE_STL_SIZEOF_FACET = 50;
   static const int IND_THRESHOLD = 1000; // increment the indicator every 1k triangles
 // clang-format on
 static const size_t THE_BUFFER_SIZE = 1024; // The length of buffer to read (in bytes)
+
+//! Writes numbers with the C locale (STL requires '.' as decimal separator) and restores the
+//! stream locale on scope exit.
+class ClassicLocaleScope
+{
+public:
+  explicit ClassicLocaleScope(std::ostream& theStream)
+      : myStream(theStream),
+        myOldLocale(theStream.imbue(std::locale::classic()))
+  {
+  }
+
+  ~ClassicLocaleScope() { myStream.imbue(myOldLocale); }
+
+  ClassicLocaleScope(const ClassicLocaleScope&)            = delete;
+  ClassicLocaleScope& operator=(const ClassicLocaleScope&) = delete;
+
+private:
+  std::ostream& myStream;
+  std::locale   myOldLocale;
+};
 
 //! Writing a Little Endian 32 bits integer
 inline static void convertInteger(const int theValue, char* theResult)
@@ -300,6 +322,8 @@ bool RWStl::WriteAscii(const occ::handle<Poly_Triangulation>& theMesh,
   {
     return false;
   }
+
+  const ClassicLocaleScope aLocaleScope(theStream);
 
   // note that space after 'solid' is necessary for many systems
   theStream << "solid \n";
