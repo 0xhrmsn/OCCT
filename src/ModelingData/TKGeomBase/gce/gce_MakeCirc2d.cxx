@@ -102,6 +102,19 @@ gce_MakeCirc2d::gce_MakeCirc2d(const gp_Pnt2d& P1, const gp_Pnt2d& P2, const gp_
         }
         TheError = gce_Done;
       }
+      else
+      {
+        // Parallel lines: two of the points coincide, or the three distinct points are collinear
+        // (statuses as in gce_MakeCirc).
+        if (dist1 <= gp::Resolution() || dist2 <= gp::Resolution() || dist3 <= gp::Resolution())
+        {
+          TheError = gce_ConfusedPoints;
+        }
+        else
+        {
+          TheError = gce_ColinearPoints;
+        }
+      }
     }
     else
     {

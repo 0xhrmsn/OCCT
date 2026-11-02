@@ -58,3 +58,20 @@ TEST(gce_MakeCirc2dTest, ThreePoints_SmallDistinct_Done)
   EXPECT_EQ(aMaker.Status(), gce_Done);
   EXPECT_GT(aMaker.Value().Radius(), 0.0);
 }
+
+TEST(gce_MakeCirc2dTest, ThreePoints_Collinear_ColinearPoints)
+{
+  gce_MakeCirc2d aMaker(gp_Pnt2d(0.0, 0.0), gp_Pnt2d(1.0, 0.0), gp_Pnt2d(2.0, 0.0));
+  EXPECT_FALSE(aMaker.IsDone());
+  EXPECT_EQ(aMaker.Status(), gce_ColinearPoints);
+}
+
+TEST(gce_MakeCirc2dTest, ThreePoints_TwoCoincident_ConfusedPoints)
+{
+  const gp_Pnt2d aP(0.0, 0.0);
+  const gp_Pnt2d aQ(1.0, 0.0);
+
+  EXPECT_EQ(gce_MakeCirc2d(aP, aP, aQ).Status(), gce_ConfusedPoints);
+  EXPECT_EQ(gce_MakeCirc2d(aP, aQ, aP).Status(), gce_ConfusedPoints);
+  EXPECT_EQ(gce_MakeCirc2d(aQ, aP, aP).Status(), gce_ConfusedPoints);
+}

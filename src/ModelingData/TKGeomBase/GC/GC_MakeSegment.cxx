@@ -18,6 +18,7 @@
 #include <GC_MakeLine.hxx>
 #include <GC_MakeSegment.hxx>
 #include <Geom_Line.hxx>
+#include <gp.hxx>
 #include <Geom_TrimmedCurve.hxx>
 #include <gp_Lin.hxx>
 #include <gp_Pnt.hxx>
@@ -27,10 +28,17 @@
 
 GC_MakeSegment::GC_MakeSegment(const gp_Pnt& P1, const gp_Pnt& P2)
 {
-  double                 dist = P1.Distance(P2);
-  occ::handle<Geom_Line> L    = GC_MakeLine(P1, P2);
-  TheSegment                  = new Geom_TrimmedCurve(L, 0., dist, true);
-  TheError                    = gce_Done;
+  double dist = P1.Distance(P2);
+  if (dist > gp::Resolution())
+  {
+    occ::handle<Geom_Line> L = GC_MakeLine(P1, P2);
+    TheSegment               = new Geom_TrimmedCurve(L, 0., dist, true);
+    TheError                 = gce_Done;
+  }
+  else
+  {
+    TheError = gce_ConfusedPoints;
+  }
 }
 
 //=================================================================================================

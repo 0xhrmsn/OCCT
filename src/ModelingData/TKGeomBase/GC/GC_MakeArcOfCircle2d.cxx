@@ -20,6 +20,7 @@
 #include <gce_MakeLin2d.hxx>
 #include <Geom2d_Circle.hxx>
 #include <Geom2d_TrimmedCurve.hxx>
+#include <gp.hxx>
 #include <gp_Circ2d.hxx>
 #include <gp_Pnt2d.hxx>
 #include <gp_Vec2d.hxx>
@@ -34,6 +35,11 @@ GC_MakeArcOfCircle2d::GC_MakeArcOfCircle2d(const gp_Pnt2d& P1,
 {
   gce_MakeCirc2d Cir = gce_MakeCirc2d(P1, P2, P3);
   TheError           = Cir.Status();
+  // Three coincident points give a zero-radius circle, on which no arc parameter is defined.
+  if (TheError == gce_Done && Cir.Value().Radius() <= gp::Resolution())
+  {
+    TheError = gce_ConfusedPoints;
+  }
   if (TheError == gce_Done)
   {
     gp_Circ2d                  C(Cir.Value());
