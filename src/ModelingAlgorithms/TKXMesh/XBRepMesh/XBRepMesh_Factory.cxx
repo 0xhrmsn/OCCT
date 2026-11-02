@@ -42,7 +42,13 @@ static FactoryInitializer THE_FACTORY_INIT;
 XBRepMesh_Factory::XBRepMesh_Factory()
     : BRepMesh_DiscretAlgoFactory("XBRepMesh")
 {
-  RegisterFactory(this);
+  // RegisterFactory() wraps this object into a temporary handle and keeps it only if no factory
+  // with the same name is registered yet; otherwise releasing that handle would delete the object
+  // under construction.
+  if (FindFactory(Name()).IsNull())
+  {
+    RegisterFactory(this);
+  }
 }
 
 //=================================================================================================
