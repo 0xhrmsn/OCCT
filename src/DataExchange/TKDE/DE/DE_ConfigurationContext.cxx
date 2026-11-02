@@ -83,7 +83,8 @@ static DE_ConfigurationContext_KindOfLine WhatKindOfLine(const TCollection_Ascii
     return DE_ConfigurationContext_KindOfLine_Comment;
   }
   aPos1 = aLine.FirstLocationNotInSet(aWhiteSpace, 1, aLine.Length());
-  if (aLine.Value(aPos1) == '\n')
+  // A blank line is only whitespace after the adjustment above, so no position is found
+  if (aPos1 == 0 || aLine.Value(aPos1) == '\n')
   {
     return DE_ConfigurationContext_KindOfLine_Empty;
   }
