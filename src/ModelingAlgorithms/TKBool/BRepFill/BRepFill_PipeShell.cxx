@@ -499,9 +499,17 @@ void BRepFill_PipeShell::Add(const TopoDS_Shape&  Profile,
     BRepGProp::LinearProperties(Profile, GlobalProps);
     gp_Pnt BaryCenter = GlobalProps.CentreOfMass();
 
-    TopoDS_Face ProfileFace = BRepLib_MakeFace(TopoDS::Wire(Profile), true); // only plane
-    occ::handle<Geom_Surface>        thePlane = BRep_Tool::Surface(ProfileFace);
-    occ::handle<GeomAdaptor_Surface> GAHplane = new GeomAdaptor_Surface(thePlane);
+    BRepLib_MakeFace aProfileFaceMaker(TopoDS::Wire(Profile), true); // only plane
+    if (!aProfileFaceMaker.IsDone())
+    {
+      // The plane is needed to measure the initial width between the spines; a profile that does
+      // not define a plane (e.g. a single straight edge) used to crash on the null face.
+      throw Standard_ConstructionError(
+        "BRepFill_PipeShell::Add(): with an auxiliary spine the profile must define a plane");
+    }
+    TopoDS_Face                      ProfileFace = aProfileFaceMaker.Face();
+    occ::handle<Geom_Surface>        thePlane    = BRep_Tool::Surface(ProfileFace);
+    occ::handle<GeomAdaptor_Surface> GAHplane    = new GeomAdaptor_Surface(thePlane);
     IntCurveSurface_HInter           Intersector;
     occ::handle<Adaptor3d_Curve>     aHCurve[2];
     aHCurve[0] = Loc->GetCurve();

@@ -23,6 +23,9 @@
 #include <BRepOffsetAPI_MakePipeShell.hxx>
 #include <GC_MakeArcOfCircle.hxx>
 #include <Geom_Plane.hxx>
+#include <NCollection_Array1.hxx>
+#include <Geom_BSplineCurve.hxx>
+#include <GeomAPI_PointsToBSpline.hxx>
 #include <GProp_GProps.hxx>
 #include <gp_Ax1.hxx>
 #include <gp_Ax2.hxx>
@@ -32,6 +35,7 @@
 #include <gp_Pnt.hxx>
 #include <Law_Linear.hxx>
 #include <Precision.hxx>
+#include <Standard_ConstructionError.hxx>
 #include <Standard_Handle.hxx>
 #include <TopoDS.hxx>
 #include <TopoDS_Edge.hxx>
@@ -277,4 +281,35 @@ TEST(BRepOffsetAPI_MakePipeShell_Test, NullAuxiliarySpinePreservesMode)
   aPipe.Build();
   ASSERT_TRUE(aPipe.IsDone());
   EXPECT_TRUE(BRepCheck_Analyzer(aPipe.Shape()).IsValid());
+}
+
+// With an auxiliary spine in contact mode, Add() needs the plane of the profile. A single straight
+// edge between the two spines defines no plane; Add() used to crash on the resulting null face.
+namespace
+{
+//! Rail of a two-rail sweep: B-spline along X at the given Y, wavy in Z.
+occ::handle<Geom_BSplineCurve> wavyRail(const double theY)
+{
+  NCollection_Array1<gp_Pnt> aPnts(1, 6);
+  for (int i = 1; i <= 6; ++i)
+  {
+    aPnts(i) = gp_Pnt((i - 1) * 20.0, theY, std::sin(i * 0.8) * 5.0);
+  }
+  return GeomAPI_PointsToBSpline(aPnts).Curve();
+}
+} // namespace
+
+TEST(BRepOffsetAPI_MakePipeShellTest, AuxiliarySpine_ProfileWithoutPlane_ThrowsConstructionError)
+{
+  const occ::handle<Geom_BSplineCurve> aRail1 = wavyRail(0.0);
+  const occ::handle<Geom_BSplineCurve> aRail2 = wavyRail(10.0);
+  const TopoDS_Wire aSpine     = BRepBuilderAPI_MakeWire(BRepBuilderAPI_MakeEdge(aRail1)).Wire();
+  const TopoDS_Wire anAuxSpine = BRepBuilderAPI_MakeWire(BRepBuilderAPI_MakeEdge(aRail2)).Wire();
+  const TopoDS_Wire aProfile =
+    BRepBuilderAPI_MakeWire(BRepBuilderAPI_MakeEdge(aRail1->StartPoint(), aRail2->StartPoint()))
+      .Wire();
+
+  BRepOffsetAPI_MakePipeShell aPipe(aSpine);
+  aPipe.SetMode(anAuxSpine, false, BRepFill_ContactOnBorder);
+  EXPECT_THROW(aPipe.Add(aProfile, true, false), Standard_ConstructionError);
 }
