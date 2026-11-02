@@ -7052,7 +7052,8 @@ bool STEPCAFControl_Reader::fillAttributes(
         occ::handle<TCollection_HAsciiString> aDescription = aDescrItem->Description();
         if (!aDescription.IsNull())
         {
-          theAttr->SetString(aPropName, aDescription->ToCString());
+          // UTF-8 like the writer stores it (the const char* conversion would read Latin-1)
+          theAttr->SetString(aPropName, TCollection_ExtendedString(aDescription->String(), true));
         }
         continue;
       }
