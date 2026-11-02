@@ -280,7 +280,9 @@ bool RWStl::WriteBinary(const occ::handle<Poly_Triangulation>& theMesh,
   TCollection_AsciiString aPath;
   thePath.SystemName(aPath);
 
-  std::ofstream aStream(aPath.ToCString(), std::ios::binary);
+  // UTF-8 file name (std::ofstream takes the ANSI code page on Windows)
+  std::ofstream aStream;
+  OSD_OpenStream(aStream, aPath.ToCString(), std::ios::out | std::ios::binary);
   if (!aStream.is_open())
   {
     return false;
@@ -303,7 +305,9 @@ bool RWStl::WriteAscii(const occ::handle<Poly_Triangulation>& theMesh,
   TCollection_AsciiString aPath;
   thePath.SystemName(aPath);
 
-  std::ofstream aStream(aPath.ToCString());
+  // UTF-8 file name (std::ofstream takes the ANSI code page on Windows)
+  std::ofstream aStream;
+  OSD_OpenStream(aStream, aPath.ToCString(), std::ios::out);
   if (!aStream.is_open())
   {
     return false;

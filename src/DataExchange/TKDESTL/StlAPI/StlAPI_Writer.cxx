@@ -37,9 +37,14 @@ bool StlAPI_Writer::Write(const TopoDS_Shape&          theShape,
                           const char* const            theFileName,
                           const Message_ProgressRange& theProgress)
 {
-  std::ofstream aStream(theFileName, myASCIIMode ? std::ios::out : std::ios::binary);
+  // UTF-8 file name (std::ofstream takes the ANSI code page on Windows)
+  std::ofstream aStream;
+  OSD_OpenStream(aStream,
+                 theFileName,
+                 myASCIIMode ? std::ios::out : std::ios::out | std::ios::binary);
   if (!aStream.is_open())
   {
+    Message::SendFail() << "Error: STL file '" << theFileName << "' cannot be opened for writing";
     return false;
   }
 

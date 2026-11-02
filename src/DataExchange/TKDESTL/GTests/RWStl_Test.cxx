@@ -51,3 +51,30 @@ TEST(RWStlTest, WriteAscii_CommaLocale_WritesDecimalPoint)
   // The caller's locale is restored
   EXPECT_EQ(std::use_facet<std::numpunct<char>>(aStream.getloc()).decimal_point(), ',');
 }
+
+// File names are UTF-8 in OCCT; they were passed to std::ofstream, which uses the ANSI code page
+// on Windows, so a Japanese or emoji name could not be written.
+TEST(StlAPI_WriterTest, Write_Utf8FileName)
+{
+  const TopoDS_Shape aBox = BRepPrimAPI_MakeBox(10.0, 10.0, 10.0).Shape();
+  BRepMesh_IncrementalMesh(aBox, 0.1);
+  for (const bool isAscii : {true, false})
+  {
+    const std::filesystem::path aPath =
+      std::filesystem::temp_directory_path()
+      / std::filesystem::u8path(isAscii ? "occt_stl_\xE6\x97\xA5\xE6\x9C\xAC_\xF0\x9F\x98\x80.stl"
+                                        : "occt_stl_\xE6\x97\xA5\xE6\x9C\xAC_bin.stl");
+    StlAPI_Writer aWriter;
+    aWriter.ASCIIMode() = isAscii;
+    EXPECT_TRUE(aWriter.Write(aBox, aPath.u8string().c_str())) << (isAscii ? "ascii" : "binary");
+    // The ANSI path still creates a file, but under a mis-decoded name: check the real name exists
+    // (file_size() with an error code returns -1 for a missing file, which would pass a > 0 check).
+    std::error_code anError;
+    EXPECT_TRUE(std::filesystem::exists(aPath, anError)) << (isAscii ? "ascii" : "binary");
+    if (std::filesystem::exists(aPath, anError))
+    {
+      EXPECT_GT(std::filesystem::file_size(aPath), 0u);
+    }
+    std::filesystem::remove(aPath, anError);
+  }
+}
