@@ -27,7 +27,8 @@
 //=================================================================================================
 
 StlAPI_Writer::StlAPI_Writer()
-    : myASCIIMode(true)
+    : myASCIIMode(true),
+      myNbSkippedFaces(0)
 {
 }
 
@@ -59,6 +60,7 @@ bool StlAPI_Writer::Write(const TopoDS_Shape&          theShape,
 {
   int aNbNodes     = 0;
   int aNbTriangles = 0;
+  myNbSkippedFaces = 0;
 
   // calculate total number of the nodes and triangles
   for (TopExp_Explorer anExpSF(theShape, TopAbs_FACE); anExpSF.More(); anExpSF.Next())
@@ -70,6 +72,10 @@ bool StlAPI_Writer::Write(const TopoDS_Shape&          theShape,
     {
       aNbNodes += aTriangulation->NbNodes();
       aNbTriangles += aTriangulation->NbTriangles();
+    }
+    else
+    {
+      ++myNbSkippedFaces;
     }
   }
 

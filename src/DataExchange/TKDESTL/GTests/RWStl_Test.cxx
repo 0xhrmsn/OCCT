@@ -52,6 +52,30 @@ TEST(RWStlTest, WriteAscii_CommaLocale_WritesDecimalPoint)
   EXPECT_EQ(std::use_facet<std::numpunct<char>>(aStream.getloc()).decimal_point(), ',');
 }
 
+// Faces without triangulation are skipped; Write() still succeeds, so the count tells the caller
+// that the file misses part of the shape.
+TEST(StlAPI_WriterTest, Write_PartlyMeshed_ReportsSkippedFaces)
+{
+  const TopoDS_Shape aBox   = BRepPrimAPI_MakeBox(10.0, 10.0, 10.0).Shape();
+  int                aIndex = 0;
+  for (TopExp_Explorer anExp(aBox, TopAbs_FACE); anExp.More(); anExp.Next(), ++aIndex)
+  {
+    if (aIndex < 3)
+    {
+      BRepMesh_IncrementalMesh(anExp.Current(), 0.1);
+    }
+  }
+  StlAPI_Writer      aWriter;
+  std::ostringstream aStream;
+  EXPECT_TRUE(aWriter.Write(aBox, aStream));
+  EXPECT_EQ(aWriter.NbSkippedFaces(), 3);
+
+  BRepMesh_IncrementalMesh(aBox, 0.1);
+  std::ostringstream aStream2;
+  EXPECT_TRUE(aWriter.Write(aBox, aStream2));
+  EXPECT_EQ(aWriter.NbSkippedFaces(), 0);
+}
+
 // File names are UTF-8 in OCCT; they were passed to std::ofstream, which uses the ANSI code page
 // on Windows, so a Japanese or emoji name could not be written.
 TEST(StlAPI_WriterTest, Write_Utf8FileName)

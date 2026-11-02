@@ -50,8 +50,14 @@ public:
                              Standard_OStream&            theStream,
                              const Message_ProgressRange& theProgress = Message_ProgressRange());
 
+  //! Returns the number of faces skipped by the last Write() because they have no triangulation.
+  //! Write() still returns true when other faces were written (a warning is sent to Message),
+  //! so a non-zero value means the file misses part of the shape.
+  int NbSkippedFaces() const { return myNbSkippedFaces; }
+
 private:
   bool myASCIIMode;
+  int  myNbSkippedFaces;
 };
 
 #endif // _StlAPI_Writer_HeaderFile
