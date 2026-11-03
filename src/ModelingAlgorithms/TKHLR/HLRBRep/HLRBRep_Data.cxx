@@ -164,7 +164,7 @@ public:
       for (int i = 0; i < N; i++)
       {
         int nb = 0;
-        for (int j = 0; IndUV[i][j] != -1 && j < nbUV[i]; j++, nb++)
+        for (int j = 0; j < nbUV[i] && IndUV[i][j] != -1; j++, nb++)
           ;
         if (nb > StNbMax)
           StNbMax = nb;
@@ -298,7 +298,7 @@ public:
     {
       TriOk   = true;
       int im1 = 0;
-      for (i = 1; IndUV[i0][i] != -1 && i < nbUV[i0]; i++, im1++)
+      for (i = 1; i < nbUV[i0] && IndUV[i0][i] != -1; i++, im1++)
       {
         if (IndUV[i0][i] > IndUV[i0][im1])
         {
