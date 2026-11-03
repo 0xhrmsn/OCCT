@@ -32,6 +32,7 @@
 #include <NCollection_Array1.hxx>
 
 #include <cstdio>
+#include <vector>
 IMPLEMENT_STANDARD_RTTIEXT(HLRBRep_InternalAlgo, Standard_Transient)
 
 extern int nbPtIntersection;   // total P.I.
@@ -82,8 +83,8 @@ void HLRBRep_InternalAlgo::Update()
 {
   if (!myShapes.IsEmpty())
   {
-    int                        n  = myShapes.Length();
-    occ::handle<HLRBRep_Data>* DS = new occ::handle<HLRBRep_Data>[n];
+    int                                    n = myShapes.Length();
+    std::vector<occ::handle<HLRBRep_Data>> DS(n);
 
     int i, dv, de, df, nv = 0, ne = 0, nf = 0;
 
@@ -97,6 +98,11 @@ void HLRBRep_InternalAlgo::Update()
         dv        = DS[i - 1]->NbVertices();
         de        = DS[i - 1]->NbEdges();
         df        = DS[i - 1]->NbFaces();
+      }
+      catch (Standard_OutOfMemory const&)
+      {
+        // Replacing the shape by empty data would hide it from the drawing without any sign of it.
+        throw;
       }
       catch (Standard_Failure const& anException)
       {
@@ -141,7 +147,7 @@ void HLRBRep_InternalAlgo::Update()
       }
     }
 
-    delete[] DS;
+    DS.clear();
 
     myDS->Update(myProj);
 

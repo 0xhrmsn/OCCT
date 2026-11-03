@@ -24,6 +24,7 @@
 #include <HLRBRep_VertexList.hxx>
 #include <NCollection_Sequence.hxx>
 #include <Standard_ErrorHandler.hxx>
+#include <Standard_OutOfMemory.hxx>
 
 //=================================================================================================
 
@@ -839,6 +840,11 @@ void HLRBRep_Hider::Hide(
       }
     }
 
+    catch (Standard_OutOfMemory const&)
+    {
+      // Skipping the edge would return an incomplete drawing without any sign of it.
+      throw;
+    }
     catch (Standard_Failure const& anException)
     {
 #ifdef OCCT_DEBUG

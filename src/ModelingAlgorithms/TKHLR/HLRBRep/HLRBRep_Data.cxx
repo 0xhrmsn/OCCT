@@ -40,6 +40,7 @@
 #include <Standard_Type.hxx>
 #include <StdFail_UndefinedDerivative.hxx>
 #include <Standard_Integer.hxx>
+#include <Standard_OutOfMemory.hxx>
 
 #include <cstdio>
 IMPLEMENT_STANDARD_RTTIEXT(HLRBRep_Data, Standard_Transient)
@@ -123,19 +124,32 @@ public:
 #ifdef OCCT_DEBUG
     StNbLect = StNbEcr = StNbMax = StNbMoy = 0;
 #endif
-    N     = n;
-    UV    = (double**)malloc(N * sizeof(double*));
-    IndUV = (int**)malloc(N * sizeof(int*));
-    nbUV  = (int*)malloc(N * sizeof(int));
+    N = n;
+    // calloc: rows not allocated yet stay null, so Destroy() can release a partial table
+    UV    = (double**)calloc(N, sizeof(double*));
+    IndUV = (int**)calloc(N, sizeof(int*));
+    nbUV  = (int*)calloc(N, sizeof(int));
+    if (N > 0 && (UV == nullptr || IndUV == nullptr || nbUV == nullptr))
+    {
+      failOutOfMemory();
+    }
     //    for(int i=0;i<N;i++) {
     int i;
     for (i = 0; i < N; i++)
     {
       UV[i] = (double*)malloc(SIZEUV * sizeof(double));
+      if (UV[i] == nullptr)
+      {
+        failOutOfMemory();
+      }
     }
     for (i = 0; i < N; i++)
     {
       IndUV[i] = (int*)malloc(SIZEUV * sizeof(int));
+      if (IndUV[i] == nullptr)
+      {
+        failOutOfMemory();
+      }
       for (int k = 0; k < SIZEUV; k++)
       {
         IndUV[i][k] = -1;
@@ -143,6 +157,15 @@ public:
       nbUV[i] = SIZEUV;
     }
     InitTabBit(n);
+  }
+
+  //-- ============================================================
+  //! Releases what is allocated so far and throws; the table grows quadratically with the
+  //! number of edges, so a large drawing can exhaust memory.
+  [[noreturn]] void failOutOfMemory()
+  {
+    Destroy();
+    throw Standard_OutOfMemory("HLRBRep_Data: not enough memory for the edge rejection table");
   }
 
   //-- ============================================================
@@ -194,7 +217,7 @@ public:
       ResetTabBit(N);
       //      for(int i=0;i<N;i++) {
       int i;
-      for (i = 0; i < N; i++)
+      for (i = 0; IndUV != nullptr && i < N; i++)
       {
         if (IndUV[i])
         {
@@ -206,7 +229,7 @@ public:
           std::cout << " IndUV ~~~~~~~~~~~~~~~~~~~~~~~~~~~~" << std::endl;
 #endif
       }
-      for (i = 0; i < N; i++)
+      for (i = 0; UV != nullptr && i < N; i++)
       {
         if (UV[i])
         {
@@ -268,6 +291,12 @@ public:
 
       double* NvLigneUV  = (double*)malloc((nbUV[i0] + SIZEUV) * sizeof(double));
       int*    NvLigneInd = (int*)malloc((nbUV[i0] + SIZEUV) * sizeof(int));
+      if (NvLigneUV == nullptr || NvLigneInd == nullptr)
+      {
+        free(NvLigneUV);
+        free(NvLigneInd);
+        throw Standard_OutOfMemory("HLRBRep_Data: not enough memory for the edge rejection table");
+      }
       //--
       //-- Recopie des anciennes valeurs ds la nouvelle ligne
       //--
@@ -404,13 +433,22 @@ public:
     {
       ResetTabBit(nTabBit);
     }
-    TabBit  = (long unsigned**)malloc((nbedgs) * sizeof(long unsigned*));
+    // calloc: see SetDim()
+    TabBit = (long unsigned**)calloc(nbedgs, sizeof(long unsigned*));
+    if (nbedgs > 0 && TabBit == nullptr)
+    {
+      failOutOfMemory();
+    }
     nTabBit = nbedgs;
     int n   = 1 + (nbedgs >> 5);
 
     for (int i = 0; i < nbedgs; i++)
     {
       TabBit[i] = (long unsigned*)malloc(n * sizeof(long unsigned));
+      if (TabBit[i] == nullptr)
+      {
+        failOutOfMemory();
+      }
       for (int j = 0; j < n; j++)
       {
         TabBit[i][j] = 0;
@@ -532,8 +570,17 @@ HLRBRep_Data::HLRBRep_Data(const int NV, const int NE, const int NF)
       mySLProps(2, Epsilon(1.)),
       myHideCount(0)
 {
-  myReject = new TableauRejection();
-  ((TableauRejection*)myReject)->SetDim(myNbEdges);
+  TableauRejection* aReject = new TableauRejection();
+  try
+  {
+    aReject->SetDim(myNbEdges);
+  }
+  catch (const Standard_OutOfMemory&)
+  {
+    delete aReject;
+    throw;
+  }
+  myReject = aReject;
 }
 
 void HLRBRep_Data::Destroy()
