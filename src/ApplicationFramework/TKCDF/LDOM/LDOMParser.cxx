@@ -32,6 +32,12 @@
   #include <unistd.h>
 #endif
 
+namespace
+{
+//! Maximal nesting depth of XML elements accepted by the parser (one recursion level each).
+constexpr int THE_MAX_ELEMENT_DEPTH = 1000;
+} // namespace
+
 //=================================================================================================
 
 LDOMParser::~LDOMParser()
@@ -256,7 +262,7 @@ bool LDOMParser::ParseDocument(std::istream& theIStream, const bool theWithoutRo
             myError = "User abort at startElement()";
             break;
           }
-          isError = ParseElement(theIStream, aDocStart);
+          isError = ParseElement(theIStream, aDocStart, 1);
           if (isError)
           {
             break;
@@ -293,7 +299,7 @@ bool LDOMParser::ParseDocument(std::istream& theIStream, const bool theWithoutRo
 // purpose  : parse one element, given the type of its XML presentation
 //=======================================================================
 
-bool LDOMParser::ParseElement(Standard_IStream& theIStream, bool& theDocStart)
+bool LDOMParser::ParseElement(Standard_IStream& theIStream, bool& theDocStart, const int theDepth)
 {
   bool                     isError    = false;
   const LDOM_BasicElement* aParent    = &myReader->GetElement();
@@ -333,7 +339,14 @@ bool LDOMParser::ParseElement(Standard_IStream& theIStream, bool& theDocStart)
           myError = "User abort at startElement()";
           break;
         }
-        isError = ParseElement(theIStream, theDocStart);
+        // Each nesting level is one recursive call: a crafted file must not exhaust the stack
+        if (theDepth >= THE_MAX_ELEMENT_DEPTH)
+        {
+          isError = true;
+          myError = "Elements nested too deeply";
+          break;
+        }
+        isError = ParseElement(theIStream, theDocStart, theDepth + 1);
         break;
       case LDOM_XmlReader::XML_END_ELEMENT: {
         const char* aParentName = static_cast<const char*>(aParent->GetTagName());

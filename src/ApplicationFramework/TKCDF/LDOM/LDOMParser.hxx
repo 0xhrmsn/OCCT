@@ -85,7 +85,8 @@ private:
   // ---------- PRIVATE METHODS ----------
   bool ParseDocument(Standard_IStream& theIStream, const bool theWithoutRoot = false);
 
-  bool ParseElement(Standard_IStream& theIStream, bool& theDocStart);
+  //! theDepth is the nesting level of the element being parsed (the root element has 1).
+  bool ParseElement(Standard_IStream& theIStream, bool& theDocStart, const int theDepth);
 
   // ---------- PRIVATE (PROHIBITED) METHODS ----------
 
