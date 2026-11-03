@@ -2,5 +2,6 @@
 set(OCCT_TKCDF_GTests_FILES_LOCATION "${CMAKE_CURRENT_LIST_DIR}")
 
 set(OCCT_TKCDF_GTests_FILES
+  LDOM_OSStream_Test.cxx
   LDOMParser_Test.cxx
 )

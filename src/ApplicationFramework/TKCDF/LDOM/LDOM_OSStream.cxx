@@ -102,33 +102,40 @@ int LDOM_SBuffer::underflow()
 //=======================================================================
 std::streamsize LDOM_SBuffer::xsputn(const char* aStr, std::streamsize n)
 {
+  // Nothing to store; LDOM_XmlReader passes n = -1 for an empty DOCTYPE declaration.
+  if (n <= 0)
+  {
+    return 0;
+  }
   Standard_ASSERT_RAISE(n < IntegerLast(),
                         "LDOM_SBuffer cannot work with strings greater than 2 Gb");
 
+  // aLen counts the terminating '\0' written below; only n bytes of aStr are read (the input is not
+  // null-terminated, e.g. the single character passed by overflow()).
   int aLen    = static_cast<int>(n) + 1;
   int freeLen = myMaxBuf - myCurString->len - 1;
   if (freeLen >= n)
   {
-    strncpy(myCurString->buf + myCurString->len, aStr, aLen);
+    memcpy(myCurString->buf + myCurString->len, aStr, aLen - 1);
   }
   else if (freeLen <= 0)
   {
     LDOM_StringElem* aNextElem = new (myAlloc) LDOM_StringElem(std::max(aLen, myMaxBuf), myAlloc);
     myCurString->next          = aNextElem;
     myCurString                = aNextElem;
-    strncpy(myCurString->buf + myCurString->len, aStr, aLen);
+    memcpy(myCurString->buf + myCurString->len, aStr, aLen - 1);
   }
   else // 0 < freeLen < n
   {
     // copy string by parts
-    strncpy(myCurString->buf + myCurString->len, aStr, freeLen);
+    memcpy(myCurString->buf + myCurString->len, aStr, freeLen);
     myCurString->len += freeLen;
     *(myCurString->buf + myCurString->len) = '\0';
     aLen -= freeLen;
     LDOM_StringElem* aNextElem = new (myAlloc) LDOM_StringElem(std::max(aLen, myMaxBuf), myAlloc);
     myCurString->next          = aNextElem;
     myCurString                = aNextElem;
-    strncpy(myCurString->buf + myCurString->len, aStr + freeLen, aLen);
+    memcpy(myCurString->buf + myCurString->len, aStr + freeLen, aLen - 1);
   }
   myCurString->len += aLen - 1;
   *(myCurString->buf + myCurString->len) = '\0';
