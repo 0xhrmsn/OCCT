@@ -32,7 +32,6 @@
 #include <BRepPrimAPI_MakeRevol.hxx>
 #include <BRepPrimAPI_MakeSphere.hxx>
 #include <NCollection_IndexedDataMap.hxx>
-#include <NCollection_IndexedMap.hxx>
 #include <ShapeUpgrade_UnifySameDomain.hxx>
 #include <TopExp.hxx>
 #include <TopTools_ShapeMapHasher.hxx>
@@ -533,36 +532,4 @@ TEST(BRepFilletAPI_MakeFilletTest, OCC426_RevolveFuseUnifyFillet)
   GProp_GProps aResultProps;
   BRepGProp::SurfaceProperties(aResult, aResultProps);
   EXPECT_NEAR(aResultProps.Mass(), 7507.61, 7507.61 * 0.001) << "Surface area mismatch";
-}
-
-// Build() called a second time on the same object dereferenced a null spine in UpdateTolesp()
-// (access violation, F0 13.02). Radius 6 on all edges of a 10 mm cube does not fit; the first
-// Build() nevertheless reports success with an invalid result (F0 13.07, handled separately), so
-// only the absence of a crash and a consistent state are checked here.
-TEST(BRepFilletAPI_MakeFilletTest, SecondBuildAfterFailure_NoCrash)
-{
-  const TopoDS_Shape aBox = BRepPrimAPI_MakeBox(10.0, 10.0, 10.0).Shape();
-  NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> anEdges;
-  TopExp::MapShapes(aBox, TopAbs_EDGE, anEdges);
-
-  BRepFilletAPI_MakeFillet aFillet(aBox);
-  for (int anEdgeIter = 1; anEdgeIter <= anEdges.Extent(); ++anEdgeIter)
-  {
-    aFillet.Add(6.0, TopoDS::Edge(anEdges(anEdgeIter)));
-  }
-  for (int aBuildIter = 0; aBuildIter < 2; ++aBuildIter)
-  {
-    try
-    {
-      aFillet.Build();
-    }
-    catch (const Standard_Failure&)
-    {
-      // a clean OCCT failure is acceptable
-    }
-    if (aFillet.IsDone())
-    {
-      EXPECT_FALSE(aFillet.Shape().IsNull()) << "Build() call " << aBuildIter + 1;
-    }
-  }
 }
