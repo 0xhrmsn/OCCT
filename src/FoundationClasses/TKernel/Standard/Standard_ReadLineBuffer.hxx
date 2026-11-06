@@ -105,7 +105,9 @@ public:
           // end of the stream
           if (myUseReadBufferLastStr)
           {
-            theLineLength          = myReadBufferLastStr.Size();
+            // the last line has no end-of-line symbol to replace by the null character
+            theLineLength = myReadBufferLastStr.Size();
+            myReadBufferLastStr.Resize(theLineLength + 1, '\0');
             aResultLine            = myReadBufferLastStr.Data();
             myUseReadBufferLastStr = false;
           }
