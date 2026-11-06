@@ -888,8 +888,9 @@ void BSplCLib::FunctionMultiply(const BSplCLib_EvaluatorFunction& FunctionPtr,
     aParameters(aNumNewPoles) = aStartEnd[1];
   }
 
-  int anExtrapMode = BSplineDegree;
-  int anIndex      = 0;
+  // Eval() reads two modes: [0] before the first knot, [1] after the last one
+  int anExtrapMode[2] = {BSplineDegree, BSplineDegree};
+  int anIndex         = 0;
   for (int i = 1; i <= aNumNewPoles; i++)
   {
     aContactOrderArray(i) = 0;
@@ -905,7 +906,7 @@ void BSplCLib::FunctionMultiply(const BSplCLib_EvaluatorFunction& FunctionPtr,
     Eval(aParameters(i),
          false,
          0,
-         anExtrapMode,
+         anExtrapMode[0],
          BSplineDegree,
          BSplineFlatKnots,
          PolesDimension,
@@ -956,8 +957,9 @@ void BSplCLib::FunctionReparameterise(const BSplCLib_EvaluatorFunction& Function
   double* anArrayOfNewPoles = &aNewPolesArray(1);
   BuildSchoenbergPoints(NewDegree, FlatKnots, aParameters);
 
-  int anExtrapMode = BSplineDegree;
-  int anIndex      = 0;
+  // Eval() reads two modes: [0] before the first knot, [1] after the last one
+  int anExtrapMode[2] = {BSplineDegree, BSplineDegree};
+  int anIndex         = 0;
   for (int i = 1; i <= aNumNewPoles; i++)
   {
     aContactOrderArray(i) = 0;
@@ -973,7 +975,7 @@ void BSplCLib::FunctionReparameterise(const BSplCLib_EvaluatorFunction& Function
     Eval(aResult,
          false,
          0,
-         anExtrapMode,
+         anExtrapMode[0],
          BSplineDegree,
          BSplineFlatKnots,
          PolesDimension,
