@@ -128,7 +128,14 @@ void Graphic3d_Structure::Remove()
 
   for (int aStructIdx = 1, aNbAnces = myAncestors.Length(); aStructIdx <= aNbAnces; ++aStructIdx)
   {
-    myAncestors.FindKey(aStructIdx)->Remove(this, Graphic3d_TOC_DESCENDANT);
+    Graphic3d_Structure* anAncestor = myAncestors.FindKey(aStructIdx);
+    // the ancestor in the graphic library may refer to this structure (instancing), which is
+    // destroyed below; no handle to this is made, as Remove() is also called by the destructor
+    if (!anAncestor->myCStructure.IsNull())
+    {
+      anAncestor->myCStructure->Disconnect(*myCStructure);
+    }
+    anAncestor->Remove(this, Graphic3d_TOC_DESCENDANT);
   }
 
   // Destruction of me in the graphic library
