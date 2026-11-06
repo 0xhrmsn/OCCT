@@ -59,7 +59,8 @@
 // =======================================================================
 // function : readUTF8
 // purpose  : Get a UTF-8 character; leave the tracking pointer at the start of the next character.
-//            Not protected against invalid UTF-8.
+//            A sequence cut by the terminating NULL gives an illegal symbol (IsValid() is false)
+//            and stops at the NULL; other invalid UTF-8 is not detected.
 // =======================================================================
 template <typename Type>
 inline void NCollection_UtfIterator<Type>::readUTF8()
@@ -67,7 +68,17 @@ inline void NCollection_UtfIterator<Type>::readUTF8()
   // unsigned arithmetic used
   unsigned char*      aPos         = (unsigned char*)myPosNext;
   const unsigned char aBytesToRead = UTF8_BYTES_MINUS_ONE[*aPos];
-  myCharUtf32                      = 0;
+  for (unsigned char aByteIter = 1; aByteIter <= aBytesToRead; ++aByteIter)
+  {
+    if (aPos[aByteIter] == 0)
+    {
+      // do not read past the end of the string
+      myCharUtf32 = UTF32_MAX_LEGAL + 1;
+      myPosNext   = (Type*)(aPos + aByteIter);
+      return;
+    }
+  }
+  myCharUtf32 = 0;
   switch (aBytesToRead)
   {
     case 5:

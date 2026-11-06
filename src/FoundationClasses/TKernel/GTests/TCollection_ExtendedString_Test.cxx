@@ -14,9 +14,12 @@
 #include <TCollection_ExtendedString.hxx>
 #include <TCollection_AsciiString.hxx>
 #include <NCollection_DataMap.hxx>
+#include <NCollection_UtfIterator.hxx>
 #include <Standard_OutOfRange.hxx>
 
 #include <gtest/gtest.h>
+
+#include <vector>
 
 TEST(TCollection_ExtendedStringTest, DefaultConstructor)
 {
@@ -1137,4 +1140,30 @@ TEST(TCollection_ExtendedStringTest, OCC22744_NonAsciiCharIsNotAsciiAndCanBeUsed
   NCollection_DataMap<TCollection_ExtendedString, int> aMap;
   EXPECT_NO_THROW(aMap.Bind(anExtString, 0));
   EXPECT_EQ(aMap.Size(), 1);
+}
+
+// A UTF-8 lead byte at the end of the string announced continuation bytes that the iterator read
+// past the terminating NULL (ASan heap-buffer-overflow in Draw bugs/step/bug30694: STEP names in
+// GB2312 read as UTF-8). The buffers are heap-allocated with the exact size so that ASan sees an
+// overrun.
+TEST(TCollection_ExtendedStringTest, UtfIterator_TruncatedSequenceStopsAtNull)
+{
+  const std::vector<char>       aText = {'a', 'b', char(0xE4), char(0)};
+  NCollection_UtfIterator<char> anIter(aText.data());
+  int                           aNbSymbols = 0;
+  for (; *anIter != 0; ++anIter, ++aNbSymbols)
+  {
+    EXPECT_EQ(anIter.IsValid(), aNbSymbols < 2) << "symbol " << aNbSymbols;
+  }
+  EXPECT_EQ(aNbSymbols, 3);
+  EXPECT_EQ(anIter.BufferHere(), aText.data() + 3);
+}
+
+TEST(TCollection_ExtendedStringTest, ConstructorWithTruncatedUtf8_FallsBackToBytes)
+{
+  const std::vector<char>          aText = {'a', 'b', char(0xF0), char(0x9F), char(0)};
+  const TCollection_ExtendedString aString(aText.data(), true);
+  ASSERT_EQ(aString.Length(), 4);
+  EXPECT_EQ(aString.Value(1), u'a');
+  EXPECT_EQ(aString.Value(2), u'b');
 }
