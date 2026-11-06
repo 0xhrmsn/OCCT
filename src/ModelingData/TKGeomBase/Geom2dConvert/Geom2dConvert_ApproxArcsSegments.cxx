@@ -561,7 +561,11 @@ bool Geom2dConvert_ApproxArcsSegments::makeApproximation(Geom2dConvert_PPoint& t
       }
       if (isDone || aDistance < Precision::Confusion())
       {
-        mySeqCurves.Append(aCurve);
+        // a segment below confusion that gives no line is skipped: no null element in the result
+        if (!aCurve.IsNull())
+        {
+          mySeqCurves.Append(aCurve);
+        }
         return isDone;
       }
     }
