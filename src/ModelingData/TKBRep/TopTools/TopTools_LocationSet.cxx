@@ -182,8 +182,8 @@ void TopTools_LocationSet::Write(Standard_OStream&            OS,
                                  const Message_ProgressRange& theProgress) const
 {
 
-  // 17 digits restore every double exactly (as GeomTools sets)
-  std::streamsize prec = OS.precision(17);
+  // TopTools_ShapeSet::Write() writes values that 15 digits do not restore with 17 digits
+  std::streamsize prec = OS.precision(15);
 
   int i, nbLoc = myMap.Extent();
   OS << "Locations " << nbLoc << "\n";

@@ -28,10 +28,48 @@
 #include <TopoDS_Shape.hxx>
 #include <TopTools_ShapeSet.hxx>
 #include <Standard_Assert.hxx>
+#include <Standard_CString.hxx>
 
 #include <BRep_TFace.hxx>
 
+#include <cmath>
 #include <cstring>
+#include <locale>
+
+namespace
+{
+//! Significant digits of the text BREP format.
+constexpr std::streamsize THE_BREP_PRECISION = 15;
+
+//! Writes a double that is requested with THE_BREP_PRECISION digits as before when those digits
+//! restore it exactly, and with 17 digits otherwise (17 restore every double). Other precisions,
+//! e.g. 17 set by GeomTools, are written unchanged.
+class TopTools_RoundTripNumPut : public std::num_put<char>
+{
+protected:
+  iter_type do_put(iter_type      theOut,
+                   std::ios_base& theStream,
+                   char_type      theFill,
+                   double         theValue) const override
+  {
+    if (theStream.precision() != THE_BREP_PRECISION
+        || (theStream.flags() & std::ios_base::floatfield) != 0 || !std::isfinite(theValue))
+    {
+      return std::num_put<char>::do_put(theOut, theStream, theFill, theValue);
+    }
+    char aBuffer[64];
+    Sprintf(aBuffer, "%.15g", theValue);
+    if (Strtod(aBuffer, nullptr) == theValue)
+    {
+      return std::num_put<char>::do_put(theOut, theStream, theFill, theValue);
+    }
+    theStream.precision(17);
+    theOut = std::num_put<char>::do_put(theOut, theStream, theFill, theValue);
+    theStream.precision(THE_BREP_PRECISION);
+    return theOut;
+  }
+};
+} // namespace
 
 const char* const TopTools_ShapeSet::THE_ASCII_VERSIONS[TopTools_FormatVersion_UPPER + 1] = {
   "",
@@ -506,11 +544,12 @@ void TopTools_ShapeSet::Dump(Standard_OStream& OS) const
 
 void TopTools_ShapeSet::Write(Standard_OStream& OS, const Message_ProgressRange& theProgress)
 {
-  // always use C locale for writing shapes
-  std::locale anOldLocale = OS.imbue(std::locale::classic());
+  // always use C locale for writing shapes; values that 15 digits do not restore get 17
+  std::locale anOldLocale =
+    OS.imbue(std::locale(std::locale::classic(), new TopTools_RoundTripNumPut()));
 
-  // use 17-digit precision: shortest that restores every double exactly (as GeomTools sets)
-  std::streamsize prec = OS.precision(17);
+  // use 15-digit precision
+  std::streamsize prec = OS.precision(THE_BREP_PRECISION);
 
   // write the copyright
   OS << "\n" << THE_ASCII_VERSIONS[myFormatNb] << "\n";

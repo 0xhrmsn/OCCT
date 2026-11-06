@@ -242,6 +242,19 @@ TEST(BRepTools_Test, WriteRead_TolerancesExactLocationPrecise)
   EXPECT_LE(aMaxDiff, 1.0e-15);
 }
 
+// Values that 15 digits restore keep their 15-digit text, so files of ordinary shapes do not
+// change (Draw test bugs/moddata_3/bug33318 compares the text with a reference file).
+TEST(BRepTools_Test, Write_RestorableValuesKeep15Digits)
+{
+  const TopoDS_Shape aBox = BRepPrimAPI_MakeBox(10.0, 20.0, 30.0).Shape();
+  std::ostringstream anOut;
+  BRepTools::Write(aBox, anOut);
+  const std::string aText = anOut.str();
+  EXPECT_NE(aText.find(" 1e-07"), std::string::npos);
+  EXPECT_EQ(aText.find("9.9999999999999995e-08"), std::string::npos);
+  EXPECT_EQ(anOut.precision(), 6);
+}
+
 namespace
 {
 //! True if every face of theShape has a triangulation with normals.
