@@ -406,3 +406,17 @@ TEST_F(TNaming_NamedShapeTest, UndoRedo_RestoresNamedShape)
   EXPECT_FALSE(aNSAfterRedo->IsEmpty());
   EXPECT_TRUE(aNSAfterRedo->Get().IsSame(aBox));
 }
+
+// A document made with the public constructor (no application) and undo enabled destroyed its
+// undo deltas after its data: TNaming_NamedShape::Clear() in a delta then read the freed label
+// nodes (Standard_NullObject thrown from the destructor, heap-use-after-free under ASan).
+TEST(TNaming_NamedShape_Test, DocumentWithUndo_ReleasedWithoutApplication)
+{
+  occ::handle<TDocStd_Document> aDoc = new TDocStd_Document("BinOcaf");
+  aDoc->SetUndoLimit(100);
+  aDoc->OpenCommand();
+  TNaming_Builder(aDoc->Main().FindChild(1)).Generated(BRepPrimAPI_MakeBox(10, 10, 10).Shape());
+  aDoc->CommitCommand();
+  ASSERT_EQ(aDoc->GetAvailableUndos(), 1);
+  EXPECT_NO_THROW(aDoc.Nullify());
+}

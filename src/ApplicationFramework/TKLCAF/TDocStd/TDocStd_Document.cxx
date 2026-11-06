@@ -90,6 +90,19 @@ TDocStd_Document::TDocStd_Document(const TCollection_ExtendedString& aStorageFor
 
 //=================================================================================================
 
+TDocStd_Document::~TDocStd_Document()
+{
+  // The deltas refer to labels of myData, which is declared after myUndos and myRedos and so
+  // destroyed before them: release the deltas first, as BeforeClose() does.
+  myUndoFILO.Clear();
+  myUndos.Clear();
+  myRedos.Clear();
+  myFromUndo.Nullify();
+  myFromRedo.Nullify();
+}
+
+//=================================================================================================
+
 bool TDocStd_Document::IsSaved() const
 {
   return CDM_Document::IsStored();

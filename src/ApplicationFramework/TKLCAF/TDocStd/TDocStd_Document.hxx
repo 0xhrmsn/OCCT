@@ -60,6 +60,9 @@ public:
   //! produce a crash.
   Standard_EXPORT TDocStd_Document(const TCollection_ExtendedString& astorageformat);
 
+  //! Releases the undo and redo deltas before the data they refer to.
+  Standard_EXPORT ~TDocStd_Document() override;
+
   //! the document is saved in a file.
   Standard_EXPORT bool IsSaved() const;
 
