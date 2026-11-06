@@ -6,6 +6,7 @@ set(OCCT_TKDESTEP_GTests_FILES
     STEPControl_ActorRead_Test.cxx
     STEPConstruct_RenderingProperties_Test.cxx
     StepData_SelectMember_Test.cxx
+    StepBasic_MeasureValueMember_Test.cxx
     StepData_StepWriter_Test.cxx
     StepData_StepReaderData_Test.cxx
     StepTidy_BaseTestFixture.pxx
