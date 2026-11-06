@@ -38,10 +38,12 @@ public:
   DEFINE_STANDARD_ALLOC
 
   //! Computes a ruled surface between two edges.
+  //! Returns a null face if an edge has no 3D curve.
   Standard_EXPORT static TopoDS_Face Face(const TopoDS_Edge& Edge1, const TopoDS_Edge& Edge2);
 
   //! Computes a ruled surface between two wires.
   //! The wires must have the same number of edges.
+  //! Returns a null shell if an edge has no 3D curve.
   Standard_EXPORT static TopoDS_Shell Shell(const TopoDS_Wire& Wire1, const TopoDS_Wire& Wire2);
 
   //! Computes <AxeProf> as Follow. <Location> is

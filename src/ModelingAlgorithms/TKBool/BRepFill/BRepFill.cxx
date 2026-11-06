@@ -223,6 +223,11 @@ TopoDS_Face BRepFill::Face(const TopoDS_Edge& Edge1, const TopoDS_Edge& Edge2)
   occ::handle<Geom_Curve> C1 = BRep_Tool::Curve(Edge1, L1, f1, l1);
   //  occ::handle<Geom_Curve> C2 = BT.Curve(Edge2,L2,f2,l2);
   occ::handle<Geom_Curve> C2 = BRep_Tool::Curve(Edge2, L2, f2, l2);
+  if (C1.IsNull() || C2.IsNull())
+  {
+    // an edge with pcurves only is valid B-rep but gives no ruled surface
+    return Face;
+  }
 
   // compute the location
   bool SameLoc = false;
@@ -461,6 +466,11 @@ TopoDS_Shell BRepFill::Shell(const TopoDS_Wire& Wire1, const TopoDS_Wire& Wire2)
 
     occ::handle<Geom_Curve> C1 = BRep_Tool::Curve(Edge1, L1, f1, l1);
     occ::handle<Geom_Curve> C2 = BRep_Tool::Curve(Edge2, L2, f2, l2);
+    if (C1.IsNull() || C2.IsNull())
+    {
+      // an edge with pcurves only is valid B-rep but gives no ruled surface
+      return TopoDS_Shell();
+    }
 
     // compute the location
     bool SameLoc = false;
