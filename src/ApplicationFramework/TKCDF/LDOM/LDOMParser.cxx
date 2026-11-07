@@ -370,7 +370,11 @@ bool LDOMParser::ParseElement(Standard_IStream& theIStream, bool& theDocStart, c
         aLocType = LDOM_Node::TEXT_NODE;
         {
           int aTextLen;
-          aTextStr = LDOM_CharReference::Decode((char*)myCurrentData.str(), aTextLen);
+          if (!decodeData(aTextStr, aTextLen))
+          {
+            isError = true;
+            break;
+          }
           // try to convert to integer
           if (IsDigit(aTextStr[0]))
           {
@@ -389,7 +393,11 @@ bool LDOMParser::ParseElement(Standard_IStream& theIStream, bool& theDocStart, c
         aLocType = LDOM_Node::COMMENT_NODE;
         {
           int aTextLen;
-          aTextStr   = LDOM_CharReference::Decode((char*)myCurrentData.str(), aTextLen);
+          if (!decodeData(aTextStr, aTextLen))
+          {
+            isError = true;
+            break;
+          }
           aTextValue = LDOMBasicString(aTextStr, aTextLen, myDocument);
         }
         goto create_text_node;
@@ -415,6 +423,26 @@ bool LDOMParser::ParseElement(Standard_IStream& theIStream, bool& theDocStart, c
     }
   }
   return isError;
+}
+
+//=======================================================================
+// function : decodeData
+// purpose  : take a copy of the current data with character and entity
+//           references decoded; on an invalid reference set the error
+//           and return false
+//=======================================================================
+
+bool LDOMParser::decodeData(char*& theStr, int& theLen)
+{
+  char* aData = (char*)myCurrentData.str();
+  theStr      = LDOM_CharReference::Decode(aData, theLen);
+  if (theStr == nullptr)
+  {
+    delete[] aData;
+    myError = "Invalid character reference";
+    return false;
+  }
+  return true;
 }
 
 //=======================================================================

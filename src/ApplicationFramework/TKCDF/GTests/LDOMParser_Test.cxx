@@ -7,6 +7,7 @@
 // distribution for complete text of the license and disclaimer of any warranty.
 
 #include <LDOMParser.hxx>
+#include <LDOM_Element.hxx>
 
 #include <gtest/gtest.h>
 
@@ -47,5 +48,36 @@ TEST(LDOMParserTest, Parse_NestingTooDeep_FailsCleanly)
     EXPECT_TRUE(aParser.parse(aStream)) << "depth " << aDepth;
     TCollection_AsciiString aData;
     EXPECT_STREQ(aParser.GetError(aData).ToCString(), "Elements nested too deeply");
+  }
+}
+
+TEST(LDOMParserTest, Parse_CharReferences_Decoded)
+{
+  std::istringstream aStream(
+    "<?xml version=\"1.0\"?><a x=\"A&#66;&amp;\">C&#x44;&lt;<!--E&#70;--></a>");
+  LDOMParser aParser;
+  ASSERT_FALSE(aParser.parse(aStream));
+  const LDOM_Element anElem = aParser.getDocument().getDocumentElement();
+  EXPECT_STREQ(anElem.getAttribute("x").GetString(), "AB&");
+  const LDOM_Node aText = anElem.getFirstChild();
+  EXPECT_STREQ(aText.getNodeValue().GetString(), "CD<");
+  EXPECT_STREQ(aText.getNextSibling().getNodeValue().GetString(), "EF");
+}
+
+// A character reference that cannot be decoded used to give a null string, which was then read.
+TEST(LDOMParserTest, Parse_InvalidCharReference_FailsCleanly)
+{
+  for (const char* aXml : {"<?xml version=\"1.0\"?><a>&#xFFFFFFFF;</a>",
+                           "<?xml version=\"1.0\"?><a>x&#0;</a>",
+                           "<?xml version=\"1.0\"?><a>&#65</a>",
+                           "<?xml version=\"1.0\"?><a><!--&#300;--></a>",
+                           "<?xml version=\"1.0\"?><a x=\"&#0;\"/>",
+                           "<?xml version=\"1.0\"?><a x=\"1&#xFFFF;\"></a>"})
+  {
+    std::istringstream aStream(aXml);
+    LDOMParser         aParser;
+    EXPECT_TRUE(aParser.parse(aStream)) << aXml;
+    TCollection_AsciiString aData;
+    EXPECT_STREQ(aParser.GetError(aData).ToCString(), "Invalid character reference") << aXml;
   }
 }

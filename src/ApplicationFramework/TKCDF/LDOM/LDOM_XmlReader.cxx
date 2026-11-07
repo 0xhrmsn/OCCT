@@ -662,8 +662,19 @@ LDOM_XmlReader::RecordType LDOM_XmlReader::ReadRecord(Standard_IStream& theIStre
                 ePtr        = strchr(aDataString, '\0');
               }
 
-              int aDataLen;
-              aDataString = LDOM_CharReference::Decode(aDataString, aDataLen);
+              int         aDataLen;
+              char* const aDecoded = LDOM_CharReference::Decode(aDataString, aDataLen);
+              if (aDecoded == nullptr)
+              {
+                if (theData.Length() > 0)
+                {
+                  theData.Clear();
+                  delete[] aDataString;
+                }
+                myError = "Invalid character reference";
+                return XML_UNKNOWN;
+              }
+              aDataString = aDecoded;
               if (IsDigit(aDataString[0]))
               {
                 if (getInteger(anAttrValue, aDataString, ePtr))

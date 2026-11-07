@@ -88,6 +88,10 @@ private:
   //! theDepth is the nesting level of the element being parsed (the root element has 1).
   bool ParseElement(Standard_IStream& theIStream, bool& theDocStart, const int theDepth);
 
+  //! Returns in theStr a new copy of the current data with references decoded (to be deleted
+  //! by the caller); on an invalid character reference sets the error and returns false.
+  bool decodeData(char*& theStr, int& theLen);
+
   // ---------- PRIVATE (PROHIBITED) METHODS ----------
 
   LDOMParser(const LDOMParser& theOther) = delete;

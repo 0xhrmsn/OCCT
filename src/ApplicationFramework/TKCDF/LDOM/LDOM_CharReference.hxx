@@ -44,6 +44,8 @@ class LDOM_CharReference
 public:
   // ---------- PUBLIC METHODS ----------
 
+  //! Decodes entity and character references in place; returns theSrc, or nullptr if a
+  //! character reference is invalid (no ';', zero or above 255).
   static char* Decode(char* theSrc, int& theLen);
 
   static char* Encode(const char* theSrc, int& theLen, const bool isAttribute);
