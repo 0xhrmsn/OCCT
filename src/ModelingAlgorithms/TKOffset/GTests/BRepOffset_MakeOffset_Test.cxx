@@ -17,6 +17,7 @@
 #include <BRepOffsetAPI_MakeThickSolid.hxx>
 #include <BRepOffsetAPI_ThruSections.hxx>
 #include <BRepOffset_MakeOffset.hxx>
+#include <BRepOffset_MakeSimpleOffset.hxx>
 #include <BRepOffset_Error.hxx>
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeWire.hxx>
@@ -1145,4 +1146,16 @@ TEST(BRepOffset_MakeOffsetTest, CollapsedCircularWireOffsetIsNotDone)
   bool isDone = true;
   ASSERT_NO_THROW(isDone = IsCircularWireOffsetDone(2.0, -1.0));
   EXPECT_FALSE(isDone);
+}
+
+// GetSafeOffset was public but not exported: an application could not call it to choose
+// between the simple algorithm and the offset by join.
+TEST(BRepOffset_MakeSimpleOffsetTest, GetSafeOffset_SharpAndSmoothShapes)
+{
+  BRepOffset_MakeSimpleOffset aBox(BRepPrimAPI_MakeBox(10.0, 20.0, 30.0).Shape(), 1.0);
+  const double                aBoxSafe = aBox.GetSafeOffset(1.0e-4);
+  EXPECT_GT(aBoxSafe, 0.0);
+  EXPECT_LT(aBoxSafe, 1.0e-3); // right angles between faces: almost no safe offset
+  BRepOffset_MakeSimpleOffset aSphere(BRepPrimAPI_MakeSphere(10.0).Shape(), 1.0);
+  EXPECT_GT(aSphere.GetSafeOffset(1.0e-4), 1.0e3); // smooth: no angle between faces
 }

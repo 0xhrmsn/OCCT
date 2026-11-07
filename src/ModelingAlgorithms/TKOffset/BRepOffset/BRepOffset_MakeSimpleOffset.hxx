@@ -106,7 +106,7 @@ public:
   const TopoDS_Shape& GetResultShape() const { return myResShape; }
 
   //! Computes max safe offset value for the given tolerance.
-  double GetSafeOffset(const double theExpectedToler);
+  Standard_EXPORT double GetSafeOffset(const double theExpectedToler);
 
   //! Returns result shape for the given one (if exists).
   Standard_EXPORT const TopoDS_Shape Generated(const TopoDS_Shape& theShape) const;
