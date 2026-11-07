@@ -118,7 +118,8 @@ bool BRepTools_TrsfModification::NewSurface(const TopoDS_Face&         F,
 bool BRepTools_TrsfModification::NewTriangulation(const TopoDS_Face&               theFace,
                                                   occ::handle<Poly_Triangulation>& theTriangulation)
 {
-  if (!myCopyMesh)
+  // the triangulation of a face without surface is its only geometry: always transformed
+  if (!myCopyMesh && BRep_Tool::IsGeometric(theFace))
   {
     return false;
   }
@@ -188,7 +189,8 @@ bool BRepTools_TrsfModification::NewTriangulation(const TopoDS_Face&            
 bool BRepTools_TrsfModification::NewPolygon(const TopoDS_Edge&           theE,
                                             occ::handle<Poly_Polygon3D>& theP)
 {
-  if (!myCopyMesh)
+  // the polygon of an edge without 3D curve is its only 3D geometry: always transformed
+  if (!myCopyMesh && BRep_Tool::IsGeometric(theE))
   {
     return false;
   }
@@ -240,7 +242,8 @@ bool BRepTools_TrsfModification::NewPolygonOnTriangulation(
   const TopoDS_Face&                        theF,
   occ::handle<Poly_PolygonOnTriangulation>& theP)
 {
-  if (!myCopyMesh)
+  // kept with the triangulation of a face without surface, which is always transformed
+  if (!myCopyMesh && BRep_Tool::IsGeometric(theF))
   {
     return false;
   }

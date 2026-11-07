@@ -56,7 +56,10 @@ public:
   //! Otherwise, the transformation is applied on a
   //! duplication of <theShape>.
   //! If <theCopyMesh> is true, the triangulation will be copied,
-  //! and the copy will be assigned to the result shape.
+  //! and the copy will be assigned to the result shape. The triangulation
+  //! of a face without surface and the polygon of an edge without 3D curve
+  //! (e.g. a shape read from STL) are their only geometry and are always
+  //! transformed.
   Standard_EXPORT BRepBuilderAPI_Transform(const TopoDS_Shape& theShape,
                                            const gp_Trsf&      theTrsf,
                                            const bool          theCopyGeom = false,
@@ -71,7 +74,9 @@ public:
   //! the original but with a new location assigned to it.
   //! - In all other cases, the transformation is applied to a duplicate of theShape.
   //! - If theCopyMesh is true, the triangulation will be copied,
-  //! and the copy will be assigned to the result shape.
+  //! and the copy will be assigned to the result shape. The triangulation
+  //! of a face without surface and the polygon of an edge without 3D curve
+  //! are always transformed.
   //! Use the function Shape to access the result.
   //! Note: this framework can be reused to apply the same
   //! geometric transformation to other shapes. You only
