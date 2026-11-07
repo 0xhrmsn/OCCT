@@ -17,6 +17,9 @@
 #include <BRepGProp_Domain.hxx>
 #include <BRepGProp_Gauss.hxx>
 
+#include <algorithm>
+#include <vector>
+
 // If the following is defined the error of algorithm is calculated by static moments
 #define IS_MIN_DIM
 
@@ -152,6 +155,49 @@ static double MultInf(const double theA, const double theB)
   }
 
   return theA * theB;
+}
+
+//! Number of Gauss points on each of theNbSpans spans of a range on which a single rule of
+//! theOrder points was used: never fewer points in total, and at least 8 per span, as a single
+//! rule over several polynomial spans converges poorly.
+static int spanOrder(const int theOrder, const int theNbSpans)
+{
+  return std::min(std::max(8, (theOrder + theNbSpans - 1) / theNbSpans), GPM);
+}
+
+//! Fills theBounds with theA, the knots strictly between theA and theB, and theB, ordered
+//! from theA to theB (theB may be lower than theA).
+static void spanBounds(const double                      theA,
+                       const double                      theB,
+                       const NCollection_Array1<double>& theKnots,
+                       std::vector<double>&              theBounds)
+{
+  theBounds.clear();
+  theBounds.push_back(theA);
+  const double aMin = std::min(theA, theB), aMax = std::max(theA, theB);
+  for (int i = theKnots.Lower(); i <= theKnots.Upper(); ++i)
+  {
+    if (theKnots(i) > aMin + EPS_PARAM && theKnots(i) < aMax - EPS_PARAM)
+    {
+      theBounds.push_back(theKnots(i));
+    }
+  }
+  if (theB < theA)
+  {
+    std::reverse(theBounds.begin() + 1, theBounds.end());
+  }
+  theBounds.push_back(theB);
+}
+
+//! Copies the span bounds theSpans into theBounds.
+static void boundsOf(const occ::handle<NCollection_HArray1<double>>& theSpans,
+                     std::vector<double>&                            theBounds)
+{
+  theBounds.clear();
+  for (int i = theSpans->Lower(); i <= theSpans->Upper(); ++i)
+  {
+    theBounds.push_back(theSpans->Value(i));
+  }
 }
 } // namespace
 
@@ -667,7 +713,8 @@ double BRepGProp_Gauss::Compute(BRepGProp_Face&   theSurface,
 
       if (LMaxSubs > SM)
       {
-        LMaxSubs = SM;
+        // keep all the initial spans, with room to subdivide them
+        LMaxSubs = iLSubEnd < SM ? SM : iLSubEnd + SM;
       }
 
       BRepGProp_Gauss::InitMass(0.0, 1, LMaxSubs, anInertiaL);
@@ -776,7 +823,8 @@ double BRepGProp_Gauss::Compute(BRepGProp_Face&   theSurface,
 
                 if (UMaxSubs > SM)
                 {
-                  UMaxSubs = SM;
+                  // keep all the initial spans, with room to subdivide them
+                  UMaxSubs = iUSubEnd < SM ? SM : iUSubEnd + SM;
                 }
 
                 BRepGProp_Gauss::InitMass(0.0, 1, UMaxSubs, anInertiaU);
@@ -1143,12 +1191,22 @@ void BRepGProp_Gauss::Compute(BRepGProp_Face&   theSurface,
 
   const int NbGaussgp_Pnts = std::max(NbUGaussgp_Pnts, NbVGaussgp_Pnts);
 
-  // Number of Gauss points for the integration on the face
-  math_Vector GaussSPV(1, NbGaussgp_Pnts);
-  math_Vector GaussSWV(1, NbGaussgp_Pnts);
-  math::GaussPoints(NbGaussgp_Pnts, GaussSPV);
-  math::GaussWeights(NbGaussgp_Pnts, GaussSWV);
+  // A piecewise polynomial surface is integrated span by span
+  const occ::handle<NCollection_HArray1<double>> aUSpans = theSurface.USpanBounds();
+  const occ::handle<NCollection_HArray1<double>> aVSpans = theSurface.VSpanBounds();
+  const int                                      aVSpanOrder =
+    aVSpans.IsNull() ? NbVGaussgp_Pnts : spanOrder(NbVGaussgp_Pnts, aVSpans->Length() - 1);
 
+  // Number of Gauss points for the integration on the face
+  const int aNbUPnts =
+    aUSpans.IsNull() ? NbGaussgp_Pnts : spanOrder(NbGaussgp_Pnts, aUSpans->Length() - 1);
+
+  math_Vector GaussSPV(1, aNbUPnts);
+  math_Vector GaussSWV(1, aNbUPnts);
+  math::GaussPoints(aNbUPnts, GaussSPV);
+  math::GaussWeights(aNbUPnts, GaussSWV);
+
+  std::vector<double>      aLBounds, aUBounds;
   BRepGProp_Gauss::Inertia anInertia;
   for (; theDomain.More(); theDomain.Next())
   {
@@ -1157,55 +1215,83 @@ void BRepGProp_Gauss::Compute(BRepGProp_Face&   theSurface,
       return;
     }
 
-    int NbCGaussgp_Pnts = std::min(theSurface.IntegrationOrder(), math::GaussPointsMax());
+    // The boundary curve is integrated piece by piece where the integrand is not smooth
+    const occ::handle<NCollection_HArray1<double>> aLSpans =
+      theSurface.LSpanBounds(aUSpans, aVSpans);
 
-    NbCGaussgp_Pnts = std::max(NbCGaussgp_Pnts, NbGaussgp_Pnts);
+    int NbCGaussgp_Pnts = std::min(theSurface.IntegrationOrder(), math::GaussPointsMax());
+    NbCGaussgp_Pnts     = std::max(NbCGaussgp_Pnts, NbGaussgp_Pnts);
+    if (aLSpans.IsNull())
+    {
+      aLBounds.assign({theSurface.FirstParameter(), theSurface.LastParameter()});
+    }
+    else
+    {
+      NbCGaussgp_Pnts = std::max(spanOrder(NbCGaussgp_Pnts, aLSpans->Length() - 1), aVSpanOrder);
+      boundsOf(aLSpans, aLBounds);
+    }
 
     math_Vector GaussCP(1, NbCGaussgp_Pnts);
     math_Vector GaussCW(1, NbCGaussgp_Pnts);
     math::GaussPoints(NbCGaussgp_Pnts, GaussCP);
     math::GaussWeights(NbCGaussgp_Pnts, GaussCW);
 
-    const double l1 = theSurface.FirstParameter();
-    const double l2 = theSurface.LastParameter();
-    const double lm = 0.5 * (l2 + l1);
-    const double lr = 0.5 * (l2 - l1);
-
-    BRepGProp_Gauss::Inertia aCInertia;
-    for (int i = 1; i <= NbCGaussgp_Pnts; ++i)
+    for (size_t iLSpan = 1; iLSpan < aLBounds.size(); ++iLSpan)
     {
-      const double l = lm + lr * GaussCP(i);
+      const double l1 = aLBounds[iLSpan - 1];
+      const double l2 = aLBounds[iLSpan];
+      const double lm = 0.5 * (l2 + l1);
+      const double lr = 0.5 * (l2 - l1);
 
-      gp_Pnt2d Puv;
-      gp_Vec2d Vuv;
-      theSurface.D12d(l, Puv, Vuv);
-
-      const double v = Puv.Y();
-      u2             = Puv.X();
-
-      const double Dul = Vuv.Y() * GaussCW(i);
-      const double um  = 0.5 * (u2 + u1);
-      const double ur  = 0.5 * (u2 - u1);
-
-      BRepGProp_Gauss::Inertia aLocalInertia;
-      for (int j = 1; j <= NbGaussgp_Pnts; ++j)
+      BRepGProp_Gauss::Inertia aCInertia;
+      for (int i = 1; i <= NbCGaussgp_Pnts; ++i)
       {
-        const double u       = add(um, mult(ur, GaussSPV(j)));
-        const double aWeight = Dul * GaussSWV(j);
+        const double l = lm + lr * GaussCP(i);
 
-        gp_Pnt aPoint;
-        gp_Vec aNormal;
-        theSurface.Normal(u, v, aPoint, aNormal);
+        gp_Pnt2d Puv;
+        gp_Vec2d Vuv;
+        theSurface.D12d(l, Puv, Vuv);
 
-        computeSInertiaOfElementaryPart(aPoint, aNormal, theLocation, aWeight, aLocalInertia);
+        const double v = Puv.Y();
+        u2             = Puv.X();
+
+        const double Dul = Vuv.Y() * GaussCW(i);
+        if (Dul == 0.0 && !aUSpans.IsNull())
+        {
+          continue; // no contribution; skipped only on the span by span path
+        }
+
+        aUBounds.assign({u1, u2});
+        if (!aUSpans.IsNull())
+        {
+          spanBounds(u1, u2, aUSpans->Array1(), aUBounds);
+        }
+        for (size_t iUSpan = 1; iUSpan < aUBounds.size(); ++iUSpan)
+        {
+          const double um = 0.5 * (aUBounds[iUSpan] + aUBounds[iUSpan - 1]);
+          const double ur = 0.5 * (aUBounds[iUSpan] - aUBounds[iUSpan - 1]);
+
+          BRepGProp_Gauss::Inertia aLocalInertia;
+          for (int j = 1; j <= aNbUPnts; ++j)
+          {
+            const double u       = add(um, mult(ur, GaussSPV(j)));
+            const double aWeight = Dul * GaussSWV(j);
+
+            gp_Pnt aPoint;
+            gp_Vec aNormal;
+            theSurface.Normal(u, v, aPoint, aNormal);
+
+            computeSInertiaOfElementaryPart(aPoint, aNormal, theLocation, aWeight, aLocalInertia);
+          }
+
+          multAndRestoreInertia(ur, aLocalInertia);
+          addAndRestoreInertia(aLocalInertia, aCInertia);
+        }
       }
 
-      multAndRestoreInertia(ur, aLocalInertia);
-      addAndRestoreInertia(aLocalInertia, aCInertia);
+      multAndRestoreInertia(lr, aCInertia);
+      addAndRestoreInertia(aCInertia, anInertia);
     }
-
-    multAndRestoreInertia(lr, aCInertia);
-    addAndRestoreInertia(aCInertia, anInertia);
   }
 
   convert(anInertia, theOutGravityCenter, theOutInertia, theOutMass);
@@ -1230,6 +1316,13 @@ void BRepGProp_Gauss::Compute(BRepGProp_Face&   theSurface,
 
   double _u2 = u2; // OCC104
 
+  // A piecewise polynomial surface is integrated span by span
+  const occ::handle<NCollection_HArray1<double>> aUSpans = theSurface.USpanBounds();
+  const occ::handle<NCollection_HArray1<double>> aVSpans = theSurface.VSpanBounds();
+  const int aVOrder     = std::min(theSurface.VIntegrationOrder(), math::GaussPointsMax());
+  const int aVSpanOrder = aVSpans.IsNull() ? aVOrder : spanOrder(aVOrder, aVSpans->Length() - 1);
+
+  std::vector<double>      aLBounds, aUBounds;
   BRepGProp_Gauss::Inertia anInertia;
   for (; theDomain.More(); theDomain.Next())
   {
@@ -1240,63 +1333,103 @@ void BRepGProp_Gauss::Compute(BRepGProp_Face&   theSurface,
 
     const int aVNbCGaussgp_Pnts = theSurface.VIntegrationOrder();
 
+    // Single rule along the curve and inside the face when the integrand is smooth
     const int aNbGaussgp_Pnts =
       std::min(std::max(theSurface.IntegrationOrder(), aVNbCGaussgp_Pnts), math::GaussPointsMax());
 
-    math_Vector GaussP(1, aNbGaussgp_Pnts);
-    math_Vector GaussW(1, aNbGaussgp_Pnts);
-    math::GaussPoints(aNbGaussgp_Pnts, GaussP);
-    math::GaussWeights(aNbGaussgp_Pnts, GaussW);
-
-    const double l1 = theSurface.FirstParameter();
-    const double l2 = theSurface.LastParameter();
-    const double lm = 0.5 * (l2 + l1);
-    const double lr = 0.5 * (l2 - l1);
-
-    BRepGProp_Gauss::Inertia aCInertia;
-    for (int i = 1; i <= aNbGaussgp_Pnts; ++i)
+    // The boundary curve is integrated piece by piece where the integrand is not smooth
+    const occ::handle<NCollection_HArray1<double>> aLSpans =
+      theSurface.LSpanBounds(aUSpans, aVSpans);
+    const int aNbLPnts =
+      aLSpans.IsNull() ? aNbGaussgp_Pnts
+                       : std::max(spanOrder(aNbGaussgp_Pnts, aLSpans->Length() - 1), aVSpanOrder);
+    if (aLSpans.IsNull())
     {
-      const double l = lm + lr * GaussP(i);
-
-      gp_Pnt2d Puv;
-      gp_Vec2d Vuv;
-
-      theSurface.D12d(l, Puv, Vuv);
-
-      u2             = Puv.X();
-      u2             = std::min(std::max(u1, u2), _u2); // OCC104
-      const double v = std::min(std::max(Puv.Y(), v1), v2);
-
-      const double Dul = Vuv.Y() * GaussW(i);
-      const double um  = 0.5 * (u2 + u1);
-      const double ur  = 0.5 * (u2 - u1);
-
-      BRepGProp_Gauss::Inertia aLocalInertia;
-      for (int j = 1; j <= aNbGaussgp_Pnts; ++j)
-      {
-        const double u       = um + ur * GaussP(j);
-        const double aWeight = Dul * GaussW(j);
-
-        gp_Pnt aPoint;
-        gp_Vec aNormal;
-
-        theSurface.Normal(u, v, aPoint, aNormal);
-
-        computeVInertiaOfElementaryPart(aPoint,
-                                        aNormal,
-                                        theLocation,
-                                        aWeight,
-                                        theCoeff,
-                                        theIsByPoint,
-                                        aLocalInertia);
-      }
-
-      multAndRestoreInertia(ur, aLocalInertia);
-      addAndRestoreInertia(aLocalInertia, aCInertia);
+      aLBounds.assign({theSurface.FirstParameter(), theSurface.LastParameter()});
+    }
+    else
+    {
+      boundsOf(aLSpans, aLBounds);
     }
 
-    multAndRestoreInertia(lr, aCInertia);
-    addAndRestoreInertia(aCInertia, anInertia);
+    math_Vector aLP(1, aNbLPnts);
+    math_Vector aLW(1, aNbLPnts);
+    math::GaussPoints(aNbLPnts, aLP);
+    math::GaussWeights(aNbLPnts, aLW);
+
+    // Inner rule along U: per span of the surface, otherwise the single rule as before
+    const int aNbUPnts =
+      aUSpans.IsNull() ? aNbGaussgp_Pnts : spanOrder(aNbGaussgp_Pnts, aUSpans->Length() - 1);
+    math_Vector aUP(1, aNbUPnts);
+    math_Vector aUW(1, aNbUPnts);
+    math::GaussPoints(aNbUPnts, aUP);
+    math::GaussWeights(aNbUPnts, aUW);
+
+    for (size_t iLSpan = 1; iLSpan < aLBounds.size(); ++iLSpan)
+    {
+      const double l1 = aLBounds[iLSpan - 1];
+      const double l2 = aLBounds[iLSpan];
+      const double lm = 0.5 * (l2 + l1);
+      const double lr = 0.5 * (l2 - l1);
+
+      BRepGProp_Gauss::Inertia aCInertia;
+      for (int i = 1; i <= aNbLPnts; ++i)
+      {
+        const double l = lm + lr * aLP(i);
+
+        gp_Pnt2d Puv;
+        gp_Vec2d Vuv;
+
+        theSurface.D12d(l, Puv, Vuv);
+
+        u2             = Puv.X();
+        u2             = std::min(std::max(u1, u2), _u2); // OCC104
+        const double v = std::min(std::max(Puv.Y(), v1), v2);
+
+        const double Dul = Vuv.Y() * aLW(i);
+        if (Dul == 0.0 && !aUSpans.IsNull())
+        {
+          continue; // no contribution; skipped only on the span by span path
+        }
+
+        aUBounds.assign({u1, u2});
+        if (!aUSpans.IsNull())
+        {
+          spanBounds(u1, u2, aUSpans->Array1(), aUBounds);
+        }
+        for (size_t iUSpan = 1; iUSpan < aUBounds.size(); ++iUSpan)
+        {
+          const double um = 0.5 * (aUBounds[iUSpan] + aUBounds[iUSpan - 1]);
+          const double ur = 0.5 * (aUBounds[iUSpan] - aUBounds[iUSpan - 1]);
+
+          BRepGProp_Gauss::Inertia aLocalInertia;
+          for (int j = 1; j <= aNbUPnts; ++j)
+          {
+            const double u       = um + ur * aUP(j);
+            const double aWeight = Dul * aUW(j);
+
+            gp_Pnt aPoint;
+            gp_Vec aNormal;
+
+            theSurface.Normal(u, v, aPoint, aNormal);
+
+            computeVInertiaOfElementaryPart(aPoint,
+                                            aNormal,
+                                            theLocation,
+                                            aWeight,
+                                            theCoeff,
+                                            theIsByPoint,
+                                            aLocalInertia);
+          }
+
+          multAndRestoreInertia(ur, aLocalInertia);
+          addAndRestoreInertia(aLocalInertia, aCInertia);
+        }
+      }
+
+      multAndRestoreInertia(lr, aCInertia);
+      addAndRestoreInertia(aCInertia, anInertia);
+    }
   }
 
   convert(anInertia, theCoeff, theIsByPoint, theOutGravityCenter, theOutInertia, theOutMass);
@@ -1315,6 +1448,88 @@ void BRepGProp_Gauss::Compute(const BRepGProp_Face& theSurface,
   double LowerU, UpperU, LowerV, UpperV;
   theSurface.Bounds(LowerU, UpperU, LowerV, UpperV);
   checkBounds(LowerU, UpperU, LowerV, UpperV);
+
+  const occ::handle<NCollection_HArray1<double>> aUSpans = theSurface.USpanBounds();
+  const occ::handle<NCollection_HArray1<double>> aVSpans = theSurface.VSpanBounds();
+  if (!aUSpans.IsNull() || !aVSpans.IsNull())
+  {
+    // A piecewise polynomial surface is integrated span by span
+    std::vector<double> aUBounds{LowerU, UpperU}, aVBounds{LowerV, UpperV};
+    int                 aUOrder = std::min(theSurface.UIntegrationOrder(), math::GaussPointsMax());
+    int                 aVOrder = std::min(theSurface.VIntegrationOrder(), math::GaussPointsMax());
+    if (!aUSpans.IsNull())
+    {
+      spanBounds(LowerU, UpperU, aUSpans->Array1(), aUBounds);
+      aUOrder = spanOrder(aUOrder, aUSpans->Length() - 1);
+    }
+    if (!aVSpans.IsNull())
+    {
+      spanBounds(LowerV, UpperV, aVSpans->Array1(), aVBounds);
+      aVOrder = spanOrder(aVOrder, aVSpans->Length() - 1);
+    }
+    math_Vector aGaussPU(1, aUOrder), aGaussWU(1, aUOrder);
+    math_Vector aGaussPV(1, aVOrder), aGaussWV(1, aVOrder);
+    math::GaussPoints(aUOrder, aGaussPU);
+    math::GaussWeights(aUOrder, aGaussWU);
+    math::GaussPoints(aVOrder, aGaussPV);
+    math::GaussWeights(aVOrder, aGaussWV);
+
+    gp_Pnt                   aPoint;
+    gp_Vec                   aNormal;
+    BRepGProp_Gauss::Inertia anInertia;
+    for (size_t iV = 1; iV < aVBounds.size(); ++iV)
+    {
+      const double vm = 0.5 * add(aVBounds[iV], aVBounds[iV - 1]);
+      const double vr = 0.5 * add(aVBounds[iV], -aVBounds[iV - 1]);
+      for (size_t iU = 1; iU < aUBounds.size(); ++iU)
+      {
+        const double             um = 0.5 * add(aUBounds[iU], aUBounds[iU - 1]);
+        const double             ur = 0.5 * add(aUBounds[iU], -aUBounds[iU - 1]);
+        BRepGProp_Gauss::Inertia aSpanInertia;
+        for (int j = 1; j <= aVOrder; ++j)
+        {
+          const double             v = add(vm, mult(vr, aGaussPV(j)));
+          BRepGProp_Gauss::Inertia anInertiaOfElementaryPart;
+          for (int i = 1; i <= aUOrder; ++i)
+          {
+            const double u = add(um, mult(ur, aGaussPU(i)));
+            theSurface.Normal(u, v, aPoint, aNormal);
+            if (myType == Vinert)
+            {
+              computeVInertiaOfElementaryPart(aPoint,
+                                              aNormal,
+                                              theLocation,
+                                              aGaussWU(i),
+                                              theCoeff,
+                                              theIsByPoint,
+                                              anInertiaOfElementaryPart);
+            }
+            else // Sinert
+            {
+              computeSInertiaOfElementaryPart(aPoint,
+                                              aNormal,
+                                              theLocation,
+                                              aGaussWU(i),
+                                              anInertiaOfElementaryPart);
+            }
+          }
+          multAndRestoreInertia(aGaussWV(j), anInertiaOfElementaryPart);
+          addAndRestoreInertia(anInertiaOfElementaryPart, aSpanInertia);
+        }
+        multAndRestoreInertia(mult(ur, vr), aSpanInertia);
+        addAndRestoreInertia(aSpanInertia, anInertia);
+      }
+    }
+    if (myType == Vinert)
+    {
+      convert(anInertia, theCoeff, theIsByPoint, theOutGravityCenter, theOutInertia, theOutMass);
+    }
+    else // Sinert
+    {
+      convert(anInertia, theOutGravityCenter, theOutInertia, theOutMass);
+    }
+    return;
+  }
 
   const int UOrder = std::min(theSurface.UIntegrationOrder(), math::GaussPointsMax());
   const int VOrder = std::min(theSurface.VIntegrationOrder(), math::GaussPointsMax());

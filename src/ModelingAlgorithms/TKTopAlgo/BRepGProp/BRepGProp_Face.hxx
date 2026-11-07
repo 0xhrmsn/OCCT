@@ -85,6 +85,22 @@ public:
 
   Standard_EXPORT void LKnots(NCollection_Array1<double>& Knots) const;
 
+  //! Returns the span bounds in U, in increasing order, of a surface that is only polynomial
+  //! by spans (BSpline, extrusion or revolution of a BSpline curve), within the bounds of the
+  //! face. A null handle if there is a single span.
+  Standard_EXPORT occ::handle<NCollection_HArray1<double>> USpanBounds() const;
+
+  //! Same as USpanBounds() in V.
+  Standard_EXPORT occ::handle<NCollection_HArray1<double>> VSpanBounds() const;
+
+  //! Returns the parameters of the current boundary curve, from the first to the last one,
+  //! that bound the pieces where the integrand is smooth: the knots of a BSpline curve, or
+  //! where a line crosses the span bounds theUBounds and theVBounds of the surface (see
+  //! USpanBounds()); a null handle if there is a single piece.
+  Standard_EXPORT occ::handle<NCollection_HArray1<double>> LSpanBounds(
+    const occ::handle<NCollection_HArray1<double>>& theUBounds,
+    const occ::handle<NCollection_HArray1<double>>& theVBounds) const;
+
   //! Returns the number of points required to do the
   //! integration in the U parametric direction with
   //! a good accuracy.

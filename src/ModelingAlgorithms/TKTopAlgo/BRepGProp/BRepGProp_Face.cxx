@@ -18,6 +18,7 @@
 #include <Geom2d_BezierCurve.hxx>
 #include <Geom2d_BSplineCurve.hxx>
 #include <Geom2d_Line.hxx>
+#include <gp_Lin2d.hxx>
 #include <Geom_BezierSurface.hxx>
 #include <Geom_BSplineCurve.hxx>
 #include <Geom_BSplineSurface.hxx>
@@ -31,6 +32,9 @@
 #include <TopoDS.hxx>
 #include <TopoDS_Edge.hxx>
 #include <TopoDS_Face.hxx>
+
+#include <algorithm>
+#include <vector>
 
 static const double Epsilon1 = Epsilon(1.);
 
@@ -296,6 +300,11 @@ int BRepGProp_Face::SUIntSubs() const
     case GeomAbs_BSplineSurface:
       N = (*(occ::handle<Geom_BSplineSurface>*)&mySurface.GeomSurfaceOriginal())->NbUKnots();
       break;
+    case GeomAbs_SurfaceOfExtrusion:
+    case GeomAbs_SurfaceOfRevolution:
+      // spans of the basis curve
+      N = mySurface.NbUIntervals(GeomAbs_CN) + 1;
+      break;
     default:
       N = 2;
       break;
@@ -330,6 +339,11 @@ int BRepGProp_Face::SVIntSubs() const
       break;
     case GeomAbs_BSplineSurface:
       N = (*(occ::handle<Geom_BSplineSurface>*)&mySurface.GeomSurfaceOriginal())->NbVKnots();
+      break;
+    case GeomAbs_SurfaceOfExtrusion:
+    case GeomAbs_SurfaceOfRevolution:
+      // spans of the basis curve
+      N = mySurface.NbVIntervals(GeomAbs_CN) + 1;
       break;
     default:
       N = 2;
@@ -366,6 +380,10 @@ void BRepGProp_Face::UKnots(NCollection_Array1<double>& Knots) const
       }
     }
     break;
+    case GeomAbs_SurfaceOfExtrusion:
+    case GeomAbs_SurfaceOfRevolution:
+      mySurface.UIntervals(Knots, GeomAbs_CN);
+      break;
     default:
       Knots(1) = mySurface.FirstUParameter();
       Knots(2) = mySurface.LastUParameter();
@@ -405,11 +423,135 @@ void BRepGProp_Face::VKnots(NCollection_Array1<double>& Knots) const
       }
     }
     break;
+    case GeomAbs_SurfaceOfExtrusion:
+    case GeomAbs_SurfaceOfRevolution:
+      mySurface.VIntervals(Knots, GeomAbs_CN);
+      break;
     default:
       Knots(1) = mySurface.FirstUParameter();
       Knots(2) = mySurface.LastUParameter();
       break;
   }
+}
+
+//=================================================================================================
+
+static bool isPiecewiseSurface(const GeomAbs_SurfaceType theType)
+{
+  // polynomial (or rational) by spans: BSpline surface, or a surface swept by a BSpline curve.
+  // Not an offset surface: the integration also covers its part outside the face, where it may
+  // be nearly singular, and a split by spans of the basis was found to be less accurate there.
+  return theType == GeomAbs_BSplineSurface || theType == GeomAbs_SurfaceOfExtrusion
+         || theType == GeomAbs_SurfaceOfRevolution;
+}
+
+//=================================================================================================
+
+occ::handle<NCollection_HArray1<double>> BRepGProp_Face::USpanBounds() const
+{
+  if (!isPiecewiseSurface(mySurface.GetType()))
+  {
+    return nullptr;
+  }
+  const int aNbSpans = mySurface.NbUIntervals(GeomAbs_CN);
+  if (aNbSpans < 2)
+  {
+    return nullptr;
+  }
+  occ::handle<NCollection_HArray1<double>> aBounds =
+    new NCollection_HArray1<double>(1, aNbSpans + 1);
+  mySurface.UIntervals(aBounds->ChangeArray1(), GeomAbs_CN);
+  return aBounds;
+}
+
+//=================================================================================================
+
+occ::handle<NCollection_HArray1<double>> BRepGProp_Face::VSpanBounds() const
+{
+  if (!isPiecewiseSurface(mySurface.GetType()))
+  {
+    return nullptr;
+  }
+  const int aNbSpans = mySurface.NbVIntervals(GeomAbs_CN);
+  if (aNbSpans < 2)
+  {
+    return nullptr;
+  }
+  occ::handle<NCollection_HArray1<double>> aBounds =
+    new NCollection_HArray1<double>(1, aNbSpans + 1);
+  mySurface.VIntervals(aBounds->ChangeArray1(), GeomAbs_CN);
+  return aBounds;
+}
+
+//=================================================================================================
+
+occ::handle<NCollection_HArray1<double>> BRepGProp_Face::LSpanBounds(
+  const occ::handle<NCollection_HArray1<double>>& theUBounds,
+  const occ::handle<NCollection_HArray1<double>>& theVBounds) const
+{
+  const double        aFirst = myCurve.FirstParameter(), aLast = myCurve.LastParameter();
+  std::vector<double> aBreaks;
+  if (myCurve.GetType() == GeomAbs_BSplineCurve)
+  {
+    // knots of the curve inside the range of the edge
+    const int aNbSpans = myCurve.NbIntervals(GeomAbs_CN);
+    if (aNbSpans > 1)
+    {
+      NCollection_Array1<double> anIntervals(1, aNbSpans + 1);
+      myCurve.Intervals(anIntervals, GeomAbs_CN);
+      for (int i = anIntervals.Lower(); i <= anIntervals.Upper(); ++i)
+      {
+        aBreaks.push_back(anIntervals(i));
+      }
+    }
+  }
+  else if (myCurve.GetType() == GeomAbs_Line)
+  {
+    // a line crosses the span bounds of the surface at known parameters; a line along U
+    // (constant V) contributes nothing and needs no split
+    const gp_Lin2d aLine = myCurve.Line();
+    if (std::abs(aLine.Direction().Y()) < Precision::PConfusion())
+    {
+      return nullptr;
+    }
+    for (int iDir = 0; iDir < 2; ++iDir)
+    {
+      const occ::handle<NCollection_HArray1<double>>& aBounds = iDir == 0 ? theUBounds : theVBounds;
+      const double aD = iDir == 0 ? aLine.Direction().X() : aLine.Direction().Y();
+      const double aP = iDir == 0 ? aLine.Location().X() : aLine.Location().Y();
+      if (aBounds.IsNull() || std::abs(aD) < Precision::PConfusion())
+      {
+        continue;
+      }
+      for (int i = aBounds->Lower(); i <= aBounds->Upper(); ++i)
+      {
+        aBreaks.push_back((aBounds->Value(i) - aP) / aD);
+      }
+    }
+  }
+
+  std::vector<double> aResult{aFirst};
+  std::sort(aBreaks.begin(), aBreaks.end());
+  for (const double aBreak : aBreaks)
+  {
+    if (aBreak > aResult.back() + Precision::PConfusion()
+        && aBreak < aLast - Precision::PConfusion())
+    {
+      aResult.push_back(aBreak);
+    }
+  }
+  if (aResult.size() < 2)
+  {
+    return nullptr;
+  }
+  aResult.push_back(aLast);
+  occ::handle<NCollection_HArray1<double>> aBounds =
+    new NCollection_HArray1<double>(1, static_cast<int>(aResult.size()));
+  for (size_t i = 0; i < aResult.size(); ++i)
+  {
+    aBounds->SetValue(static_cast<int>(i) + 1, aResult[i]);
+  }
+  return aBounds;
 }
 
 //=================================================================================================

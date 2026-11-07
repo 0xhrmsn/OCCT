@@ -19,12 +19,20 @@
 #include <gp_Pln.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepBuilderAPI_MakeEdge.hxx>
+#include <BRepBuilderAPI_MakeFace.hxx>
+#include <BRepBuilderAPI_MakeWire.hxx>
 #include <BRepGProp.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
+#include <BRepPrimAPI_MakePrism.hxx>
+#include <BRepPrimAPI_MakeRevol.hxx>
 #include <BRepPrimAPI_MakeSphere.hxx>
 #include <BRep_Builder.hxx>
 #include <GCPnts_AbscissaPoint.hxx>
+#include <GeomConvert.hxx>
+#include <Geom_Circle.hxx>
+#include <Geom_RectangularTrimmedSurface.hxx>
+#include <Geom_SurfaceOfLinearExtrusion.hxx>
 #include <Geom2d_BSplineCurve.hxx>
 #include <Geom_BSplineCurve.hxx>
 #include <Geom_Plane.hxx>
@@ -351,4 +359,163 @@ TEST(BRepGPropTest, VinertByPlane_BoxVolume_KeepsMassAndCentre)
   EXPECT_NEAR(anAdaptive.CentreOfMass().Y(), 2.0, 1.0e-10);
   EXPECT_NEAR(anAdaptive.CentreOfMass().Z(), 1.0, 1.0e-10);
   expectGPropsNear(anAdaptive, aBlock, 1.0e-9);
+}
+
+namespace
+{
+// Circle of radius theR as a periodic rational BSpline with theNbSpans spans: the geometry
+// is exact, only the number of polynomial pieces grows.
+occ::handle<Geom_BSplineCurve> circleOfSpans(const gp_Ax2& thePos,
+                                             const double  theR,
+                                             const int     theNbSpans)
+{
+  occ::handle<Geom_BSplineCurve> aCurve =
+    GeomConvert::CurveToBSplineCurve(new Geom_Circle(thePos, theR));
+  const double aFirst = aCurve->FirstParameter(), aLast = aCurve->LastParameter();
+  for (int i = 1; i < theNbSpans; ++i)
+  {
+    aCurve->InsertKnot(aFirst + (aLast - aFirst) * i / theNbSpans);
+  }
+  return aCurve;
+}
+
+TopoDS_Face circleFaceOfSpans(const double theR, const int theNbSpans)
+{
+  return BRepBuilderAPI_MakeFace(
+    BRepBuilderAPI_MakeWire(BRepBuilderAPI_MakeEdge(
+      circleOfSpans(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), theR, theNbSpans))),
+    true);
+}
+
+// Regular polygon with theNbSides sides of circumradius theR as one degree 1 BSpline edge.
+TopoDS_Face polygonFaceAsOneEdge(const double theR, const int theNbSides)
+{
+  NCollection_Array1<gp_Pnt> aPoles(1, theNbSides + 1);
+  NCollection_Array1<double> aKnots(1, theNbSides + 1);
+  NCollection_Array1<int>    aMults(1, theNbSides + 1);
+  for (int i = 0; i <= theNbSides; ++i)
+  {
+    const double anAngle = 2 * M_PI * (i % theNbSides) / theNbSides;
+    aPoles(i + 1)        = gp_Pnt(theR * std::cos(anAngle), theR * std::sin(anAngle), 0);
+    aKnots(i + 1)        = i;
+    aMults(i + 1)        = (i == 0 || i == theNbSides) ? 2 : 1;
+  }
+  occ::handle<Geom_BSplineCurve> aCurve = new Geom_BSplineCurve(aPoles, aKnots, aMults, 1);
+  return BRepBuilderAPI_MakeFace(BRepBuilderAPI_MakeWire(BRepBuilderAPI_MakeEdge(aCurve)), true);
+}
+} // namespace
+
+// The boundary curve and the extrusion surface used to be integrated with one Gauss rule over
+// the whole range: with many BSpline spans area and volume were wrong without any error.
+TEST(BRepGPropTest, ManySpans_CircleAsBSpline_AreaAndVolume)
+{
+  const double aR = 5.0, aH = 3.0;
+  for (const int aNbSpans : {4, 60, 300})
+  {
+    const TopoDS_Face  aFace  = circleFaceOfSpans(aR, aNbSpans);
+    const TopoDS_Shape aPrism = BRepPrimAPI_MakePrism(aFace, gp_Vec(0, 0, aH)).Shape();
+    const double       anArea = M_PI * aR * aR;
+
+    GProp_GProps aSurf, aSurfEps, aVol, aVolEps;
+    BRepGProp::SurfaceProperties(aFace, aSurf);
+    BRepGProp::SurfaceProperties(aFace, aSurfEps, 1.0e-9);
+    BRepGProp::VolumeProperties(aPrism, aVol);
+    BRepGProp::VolumeProperties(aPrism, aVolEps, 1.0e-9);
+    EXPECT_NEAR(aSurf.Mass(), anArea, 1.0e-7 * anArea) << aNbSpans << " spans";
+    EXPECT_NEAR(aSurfEps.Mass(), anArea, 1.0e-7 * anArea) << aNbSpans << " spans";
+    EXPECT_NEAR(aVol.Mass(), anArea * aH, 1.0e-7 * anArea * aH) << aNbSpans << " spans";
+    EXPECT_NEAR(aVolEps.Mass(), anArea * aH, 1.0e-7 * anArea * aH) << aNbSpans << " spans";
+    EXPECT_NEAR(aVol.CentreOfMass().Z(), 0.5 * aH, 1.0e-7) << aNbSpans << " spans";
+  }
+}
+
+TEST(BRepGPropTest, ManySpans_PolygonAsOneBSplineEdge_AreaAndVolume)
+{
+  const double aR = 4.0, aH = 2.0;
+  for (const int aNbSides : {6, 40, 200, 2500})
+  {
+    const TopoDS_Face  aFace  = polygonFaceAsOneEdge(aR, aNbSides);
+    const TopoDS_Shape aPrism = BRepPrimAPI_MakePrism(aFace, gp_Vec(0, 0, aH)).Shape();
+    const double       anArea = 0.5 * aNbSides * aR * aR * std::sin(2 * M_PI / aNbSides);
+
+    GProp_GProps aSurf, aSurfEps, aVol, aVolEps;
+    BRepGProp::SurfaceProperties(aFace, aSurf);
+    BRepGProp::SurfaceProperties(aFace, aSurfEps, 1.0e-9);
+    BRepGProp::VolumeProperties(aPrism, aVol);
+    BRepGProp::VolumeProperties(aPrism, aVolEps, 1.0e-9);
+    EXPECT_NEAR(aSurf.Mass(), anArea, 1.0e-7 * anArea) << aNbSides << " sides";
+    // more spans than the adaptive path used to keep (SM subintervals)
+    EXPECT_NEAR(aSurfEps.Mass(), anArea, 1.0e-7 * anArea) << aNbSides << " sides";
+    EXPECT_NEAR(aVol.Mass(), anArea * aH, 1.0e-7 * anArea * aH) << aNbSides << " sides";
+    EXPECT_NEAR(aVolEps.Mass(), anArea * aH, 1.0e-7 * anArea * aH) << aNbSides << " sides";
+  }
+}
+
+// The span bounds of the surface in V are crossed by the seam of the torus: the integral along
+// the boundary must be split there as well.
+TEST(BRepGPropTest, ManySpans_TorusOfBSplineCircle_Volume)
+{
+  const double aRc = 10.0, aR = 3.0;
+  for (const int aNbSpans : {4, 60, 300})
+  {
+    const occ::handle<Geom_BSplineCurve> aProfile =
+      circleOfSpans(gp_Ax2(gp_Pnt(aRc, 0, 0), gp_Dir(0, 1, 0)), aR, aNbSpans);
+    const TopoDS_Face aFace =
+      BRepBuilderAPI_MakeFace(BRepBuilderAPI_MakeWire(BRepBuilderAPI_MakeEdge(aProfile)), true);
+    const TopoDS_Shape aTorus =
+      BRepPrimAPI_MakeRevol(aFace, gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1))).Shape();
+    const double aVolume = 2 * M_PI * M_PI * aRc * aR * aR;
+
+    GProp_GProps aVol, aVolEps;
+    BRepGProp::VolumeProperties(aTorus, aVol);
+    BRepGProp::VolumeProperties(aTorus, aVolEps, 1.0e-9);
+    EXPECT_NEAR(aVol.Mass(), aVolume, 1.0e-7 * aVolume) << aNbSpans << " spans";
+    // the adaptive path stops at about 2e-7 on this revolution surface whatever the spans
+    EXPECT_NEAR(aVolEps.Mass(), aVolume, 1.0e-6 * aVolume) << aNbSpans << " spans";
+  }
+}
+
+// Face without wires (natural restriction) on an extrusion of a circle with many spans.
+TEST(BRepGPropTest, ManySpans_NaturalRestrictionOnExtrusion_Area)
+{
+  const double aR = 2.0, aH = 5.0;
+  for (const int aNbSpans : {4, 300})
+  {
+    const occ::handle<Geom_BSplineCurve> aCurve =
+      circleOfSpans(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), aR, aNbSpans);
+    const occ::handle<Geom_Surface> aSurf =
+      new Geom_RectangularTrimmedSurface(new Geom_SurfaceOfLinearExtrusion(aCurve, gp_Dir(0, 0, 1)),
+                                         aCurve->FirstParameter(),
+                                         aCurve->LastParameter(),
+                                         0.0,
+                                         aH);
+    TopoDS_Face  aFace;
+    BRep_Builder aBuilder;
+    aBuilder.MakeFace(aFace, aSurf, Precision::Confusion());
+    const double anArea = 2 * M_PI * aR * aH;
+
+    GProp_GProps aSurfProps, aSurfEps;
+    BRepGProp::SurfaceProperties(aFace, aSurfProps);
+    BRepGProp::SurfaceProperties(aFace, aSurfEps, 1.0e-9);
+    EXPECT_NEAR(aSurfProps.Mass(), anArea, 1.0e-7 * anArea) << aNbSpans << " spans";
+    EXPECT_NEAR(aSurfEps.Mass(), anArea, 1.0e-7 * anArea) << aNbSpans << " spans";
+  }
+}
+
+// Moment of inertia and orientation with span by span integration.
+TEST(BRepGPropTest, ManySpans_CylinderAsPrism_InertiaAndReversed)
+{
+  const double       aR = 5.0, aH = 3.0;
+  const TopoDS_Shape aPrism =
+    BRepPrimAPI_MakePrism(circleFaceOfSpans(aR, 300), gp_Vec(0, 0, aH)).Shape();
+  const double aVolume = M_PI * aR * aR * aH;
+
+  GProp_GProps aVol, aVolRev;
+  BRepGProp::VolumeProperties(aPrism, aVol);
+  BRepGProp::VolumeProperties(aPrism.Reversed(), aVolRev);
+  const gp_Mat anInertia = aVol.MatrixOfInertia();
+  EXPECT_NEAR(anInertia(3, 3), 0.5 * aVolume * aR * aR, 1.0e-7 * aVolume * aR * aR);
+  EXPECT_NEAR(anInertia(1, 1), aVolume * (aR * aR / 4 + aH * aH / 12), 1.0e-7 * aVolume * aR * aR);
+  EXPECT_NEAR(aVol.CentreOfMass().X(), 0.0, 1.0e-7);
+  EXPECT_NEAR(aVolRev.Mass(), -aVolume, 1.0e-7 * aVolume);
 }
