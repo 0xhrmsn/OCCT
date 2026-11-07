@@ -21,7 +21,8 @@ enum BRepFeat_Status
 {
   BRepFeat_NoError,
   BRepFeat_InvalidPlacement,
-  BRepFeat_HoleTooLong
+  BRepFeat_HoleTooLong,
+  BRepFeat_EmptyResult //!< the operation removes the whole shape
 };
 
 #endif // _BRepFeat_Status_HeaderFile

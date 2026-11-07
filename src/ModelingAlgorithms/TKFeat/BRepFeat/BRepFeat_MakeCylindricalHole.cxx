@@ -635,6 +635,11 @@ void BRepFeat_MakeCylindricalHole::Build()
     if (!HasErrors())
     {
       myStatus = (myValidate) ? Validate() : BRepFeat_NoError;
+      // a hole wider than the shape removes it entirely: a failure, not an empty result
+      if (myStatus == BRepFeat_NoError && !TopExp_Explorer(Shape(), TopAbs_FACE).More())
+      {
+        myStatus = BRepFeat_EmptyResult;
+      }
       if (myStatus == BRepFeat_NoError)
       {
         myShape = Shape();

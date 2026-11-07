@@ -142,6 +142,10 @@ static void Print(Draw_Interpretor& di, const BRepFeat_Status St)
     case BRepFeat_HoleTooLong:
       di << "Hole too long";
       break;
+
+    case BRepFeat_EmptyResult:
+      di << "The hole removes the whole shape";
+      break;
   }
 }
 
