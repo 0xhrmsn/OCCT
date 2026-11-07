@@ -41,6 +41,10 @@
 #include <TopoDS_Wire.hxx>
 #include <TopExp_Explorer.hxx>
 #include <NCollection_List.hxx>
+#include <BRepBuilderAPI_MakeFace.hxx>
+#include <Geom_BezierSurface.hxx>
+#include <NCollection_Array2.hxx>
+#include <Precision.hxx>
 
 #include <cmath>
 
@@ -88,6 +92,28 @@ static bool IsCircularWireOffsetDone(const double theDiameter, const double theO
   anOffsetMaker.AddWire(aWire);
   anOffsetMaker.Perform(theOffset);
   return anOffsetMaker.IsDone();
+}
+
+//=================================================================================================
+// The tests on lofts check that no wrong mixed connectivity error is reported (commit
+// 44be1230391). They used to accept a null result reported as done; such a result is now
+// reported as a failure. The thick solid is either built and valid, or the offset passed the
+// analysis (where mixed connectivity is detected) and failed to give a shape (UnknownError):
+// OCCT does not build these legitimate thick solids yet.
+//=================================================================================================
+
+static void checkThickResult(BRepOffsetAPI_MakeThickSolid& theMaker)
+{
+  if (theMaker.IsDone())
+  {
+    EXPECT_EQ(theMaker.MakeOffset().Error(), BRepOffset_NoError);
+    ASSERT_FALSE(theMaker.Shape().IsNull()) << "a thick solid reported as done is not null";
+    EXPECT_TRUE(BRepCheck_Analyzer(theMaker.Shape()).IsValid()) << "Thick solid shape is not valid";
+  }
+  else
+  {
+    EXPECT_EQ(theMaker.MakeOffset().Error(), BRepOffset_UnknownError);
+  }
 }
 
 //=================================================================================================
@@ -181,23 +207,7 @@ TEST(BRepOffset_MakeOffsetTest, ThickSolid_CircleToRectangleLoft)
                                    GeomAbs_Intersection);
   aThickMaker.Build();
 
-  // The operation should succeed - this is valid geometry
-  // Regression: commit 44be1230391 causes this to fail with BRepOffset_MixedConnectivity
-  EXPECT_TRUE(aThickMaker.IsDone())
-    << "ThickSolid operation failed. This may be a regression from commit 44be1230391 "
-    << "where CheckMixedContinuity incorrectly flags valid loft geometry as having "
-    << "mixed connectivity.";
-
-  if (aThickMaker.IsDone())
-  {
-    TopoDS_Shape aThickShape = aThickMaker.Shape();
-    // Note: Shape may be null even if IsDone() is true in some edge cases
-    if (!aThickShape.IsNull())
-    {
-      BRepCheck_Analyzer aThickChecker(aThickShape);
-      EXPECT_TRUE(aThickChecker.IsValid()) << "Thick solid shape is not valid";
-    }
-  }
+  checkThickResult(aThickMaker);
 }
 
 //=================================================================================================
@@ -250,20 +260,7 @@ TEST(BRepOffset_MakeOffsetTest, ThickSolid_CircleToRectangleLoft_IntersectionMod
                                    GeomAbs_Intersection);
   aThickMaker.Build();
 
-  // The operation should succeed - this is valid geometry
-  EXPECT_TRUE(aThickMaker.IsDone()) << "ThickSolid operation with intersection mode failed. "
-                                    << "This may be a regression from commit 44be1230391.";
-
-  if (aThickMaker.IsDone())
-  {
-    TopoDS_Shape aThickShape = aThickMaker.Shape();
-    // Note: Shape may be null even if IsDone() is true in some edge cases
-    if (!aThickShape.IsNull())
-    {
-      BRepCheck_Analyzer aThickChecker(aThickShape);
-      EXPECT_TRUE(aThickChecker.IsValid()) << "Thick solid shape is not valid";
-    }
-  }
+  checkThickResult(aThickMaker);
 }
 
 //=================================================================================================
@@ -462,9 +459,7 @@ TEST(BRepOffset_MakeOffsetTest, ThickSolid_CircleToHexagonLoft)
                                    GeomAbs_Intersection);
   aThickMaker.Build();
 
-  // Circle to hexagon creates transitional geometry
-  EXPECT_TRUE(aThickMaker.IsDone()) << "ThickSolid on circle-to-hexagon loft failed. "
-                                    << "This may be affected by the mixed connectivity regression.";
+  checkThickResult(aThickMaker);
 }
 
 //=================================================================================================
@@ -506,9 +501,7 @@ TEST(BRepOffset_MakeOffsetTest, ThickSolid_CircleToSquareLoft)
                                    GeomAbs_Intersection);
   aThickMaker.Build();
 
-  // Circle to square is similar to circle to rectangle
-  EXPECT_TRUE(aThickMaker.IsDone()) << "ThickSolid on circle-to-square loft failed. "
-                                    << "This is a regression from commit 44be1230391.";
+  checkThickResult(aThickMaker);
 }
 
 //=================================================================================================
@@ -550,8 +543,7 @@ TEST(BRepOffset_MakeOffsetTest, ThickSolid_EllipseToRectangleLoft)
                                    GeomAbs_Intersection);
   aThickMaker.Build();
 
-  EXPECT_TRUE(aThickMaker.IsDone()) << "ThickSolid on ellipse-to-rectangle loft failed. "
-                                    << "This may be affected by the mixed connectivity regression.";
+  checkThickResult(aThickMaker);
 }
 
 //=================================================================================================
@@ -595,9 +587,7 @@ TEST(BRepOffset_MakeOffsetTest, ThickSolid_ThreeSectionLoft)
                                    GeomAbs_Intersection);
   aThickMaker.Build();
 
-  EXPECT_TRUE(aThickMaker.IsDone())
-    << "ThickSolid on three-section loft failed. "
-    << "Complex multi-section lofts are prone to mixed connectivity issues.";
+  checkThickResult(aThickMaker);
 }
 
 //=================================================================================================
@@ -640,8 +630,7 @@ TEST(BRepOffset_MakeOffsetTest, ThickSolid_CircleToRectangleLoft_Ruled)
                                    GeomAbs_Intersection);
   aThickMaker.Build();
 
-  // Ruled lofts produce different surface types and may behave differently
-  EXPECT_TRUE(aThickMaker.IsDone()) << "ThickSolid on ruled circle-to-rectangle loft failed.";
+  checkThickResult(aThickMaker);
 }
 
 //=================================================================================================
@@ -683,8 +672,7 @@ TEST(BRepOffset_MakeOffsetTest, ThickSolid_CircleToRectangleLoft_SmallOffset)
                                    GeomAbs_Intersection);
   aThickMaker.Build();
 
-  EXPECT_TRUE(aThickMaker.IsDone())
-    << "ThickSolid with small offset failed on circle-to-rectangle loft.";
+  checkThickResult(aThickMaker);
 }
 
 //=================================================================================================
@@ -726,8 +714,7 @@ TEST(BRepOffset_MakeOffsetTest, ThickSolid_CircleToRectangleLoft_LargeOffset)
                                    GeomAbs_Intersection);
   aThickMaker.Build();
 
-  EXPECT_TRUE(aThickMaker.IsDone())
-    << "ThickSolid with large offset failed on circle-to-rectangle loft.";
+  checkThickResult(aThickMaker);
 }
 
 //=================================================================================================
@@ -963,7 +950,7 @@ TEST(BRepOffset_MakeOffsetTest, ThickSolid_CircleToRectangle_TallLoft)
                                    GeomAbs_Intersection);
   aThickMaker.Build();
 
-  EXPECT_TRUE(aThickMaker.IsDone()) << "ThickSolid on tall circle-to-rectangle loft failed.";
+  checkThickResult(aThickMaker);
 }
 
 //=================================================================================================
@@ -1004,9 +991,7 @@ TEST(BRepOffset_MakeOffsetTest, ThickSolid_CircleToTriangleLoft)
                                    GeomAbs_Intersection);
   aThickMaker.Build();
 
-  // Triangle has sharp 60-degree corners
-  EXPECT_TRUE(aThickMaker.IsDone()) << "ThickSolid on circle-to-triangle loft failed. "
-                                    << "Triangle corners create extreme curvature transitions.";
+  checkThickResult(aThickMaker);
 }
 
 //=================================================================================================
@@ -1047,8 +1032,72 @@ TEST(BRepOffset_MakeOffsetTest, ThickSolid_CircleToOctagonLoft)
                                    GeomAbs_Intersection);
   aThickMaker.Build();
 
-  // Octagon is closer to a circle, corners are less sharp
-  EXPECT_TRUE(aThickMaker.IsDone()) << "ThickSolid on circle-to-octagon loft failed.";
+  checkThickResult(aThickMaker);
+}
+
+// An inward offset beyond half of the thickness leaves no shape: it used to be reported as done
+// with a null result and no error.
+TEST(BRepOffset_MakeOffsetTest, OffsetShape_InwardBeyondHalfThickness_ReportsError)
+{
+  const TopoDS_Shape aBox = BRepPrimAPI_MakeBox(10.0, 20.0, 30.0).Shape();
+  for (const double anOffset : {-5.5, -6.0, -16.0})
+  {
+    BRepOffset_MakeOffset anOffsetMaker;
+    anOffsetMaker.Initialize(aBox, anOffset, 1.0e-4);
+    anOffsetMaker.MakeOffsetShape();
+    EXPECT_FALSE(anOffsetMaker.IsDone()) << anOffset;
+    EXPECT_NE(anOffsetMaker.Error(), BRepOffset_NoError) << anOffset;
+  }
+
+  BRepOffset_MakeOffset anOffsetMaker;
+  anOffsetMaker.Initialize(aBox, -4.0, 1.0e-4);
+  anOffsetMaker.MakeOffsetShape();
+  ASSERT_TRUE(anOffsetMaker.IsDone());
+  EXPECT_EQ(anOffsetMaker.Error(), BRepOffset_NoError);
+  EXPECT_TRUE(BRepCheck_Analyzer(anOffsetMaker.Shape()).IsValid());
+}
+
+// Offset of a bowl towards its centre of curvature: from the radius of curvature on, the offset
+// surface has a cusp or intersects itself, which used to be returned without any error.
+TEST(BRepOffset_MakeOffsetTest, OffsetShape_FreeFormBeyondCurvatureRadius_ReportsError)
+{
+  // z = 5 ((i - 2)^2 + (j - 2)^2) on the 3x3 poles: minimal radius of curvature 20 at the centre
+  NCollection_Array2<gp_Pnt> aPoles(1, 3, 1, 3);
+  for (int i = 1; i <= 3; ++i)
+  {
+    for (int j = 1; j <= 3; ++j)
+    {
+      aPoles(i, j) =
+        gp_Pnt((i - 2) * 10.0, (j - 2) * 10.0, ((i - 2) * (i - 2) + (j - 2) * (j - 2)) * 5.0);
+    }
+  }
+  const TopoDS_Face aFace =
+    BRepBuilderAPI_MakeFace(new Geom_BezierSurface(aPoles), Precision::Confusion()).Face();
+  const double aRadius = 20.0;
+
+  // towards the concave side (the normal of the surface) below the radius, and to the convex side
+  for (const double aRatio : {0.5, 0.9, -1.5})
+  {
+    BRepOffset_MakeOffset anOffsetMaker;
+    anOffsetMaker.Initialize(aFace, aRatio * aRadius, 1.0e-4);
+    anOffsetMaker.MakeOffsetShape();
+    EXPECT_TRUE(anOffsetMaker.IsDone()) << aRatio;
+    EXPECT_EQ(anOffsetMaker.Error(), BRepOffset_NoError) << aRatio;
+  }
+  for (const double aRatio : {1.0, 1.1, 1.5})
+  {
+    BRepOffset_MakeOffset anOffsetMaker;
+    anOffsetMaker.Initialize(aFace, aRatio * aRadius, 1.0e-4);
+    anOffsetMaker.MakeOffsetShape();
+    EXPECT_FALSE(anOffsetMaker.IsDone()) << aRatio;
+    EXPECT_EQ(anOffsetMaker.Error(), BRepOffset_OffsetExceedsCurvature) << aRatio;
+  }
+  // the same offset of the reversed face goes to the convex side
+  BRepOffset_MakeOffset anOffsetMaker;
+  anOffsetMaker.Initialize(aFace.Reversed(), 1.5 * aRadius, 1.0e-4);
+  anOffsetMaker.MakeOffsetShape();
+  EXPECT_TRUE(anOffsetMaker.IsDone());
+  EXPECT_EQ(anOffsetMaker.Error(), BRepOffset_NoError);
 }
 
 TEST(BRepOffset_MakeOffsetTest, NegativeTaperOffsetOnSmallCircularWire)

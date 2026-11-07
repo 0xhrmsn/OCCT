@@ -29,8 +29,10 @@ enum BRepOffset_Error
   BRepOffset_CannotFuseVertices, //!< exception while fuse vertices
   BRepOffset_CannotExtentEdge,   //!< exception while extent edges
   BRepOffset_UserBreak,          //!< user break
-  BRepOffset_MixedConnectivity   //!< Different connectivity of faces along edge: partially C0 and
+  BRepOffset_MixedConnectivity,  //!< Different connectivity of faces along edge: partially C0 and
                                  //!< tangent
+  BRepOffset_OffsetExceedsCurvature //!< offset of a BSpline or Bezier face towards its center of
+                                    //!< curvature not smaller than the radius of curvature
 };
 
 #endif // _BRepOffset_Error_HeaderFile

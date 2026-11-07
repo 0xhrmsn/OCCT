@@ -406,6 +406,11 @@ static void reportOffsetState(Draw_Interpretor& theCommands, const BRepOffset_Er
       theCommands << "ERROR. C0 continuity of input data.";
       break;
     }
+    case BRepOffset_OffsetExceedsCurvature: {
+      theCommands << "ERROR. Offset towards the center of curvature not smaller than the radius "
+                     "of curvature of a free-form face.";
+      break;
+    }
     case BRepOffset_NullOffset: {
       theCommands << "ERROR. Null offset of all faces.";
       break;

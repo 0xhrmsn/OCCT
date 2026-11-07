@@ -32,6 +32,7 @@
 #include <BRepCheck_Edge.hxx>
 #include <BRepCheck_Vertex.hxx>
 #include <BRepClass3d_SolidClassifier.hxx>
+#include <BRepClass_FaceClassifier.hxx>
 #include <BRepGProp.hxx>
 #include <BRepLib.hxx>
 #include <BRepLib_FindSurface.hxx>
@@ -71,6 +72,7 @@
 #include <GeomFill_Generator.hxx>
 #include <GeomLib.hxx>
 #include <GeomLib_IsPlanarSurface.hxx>
+#include <GeomLProp_SLProps.hxx>
 #include <gp_Cone.hxx>
 #include <gp_Pnt.hxx>
 #include <GProp_GProps.hxx>
@@ -307,6 +309,14 @@ static BRepOffset_Error checkSinglePoint(const double                           
                                          const double                            theVParam,
                                          const occ::handle<Geom_Surface>&        theSurf,
                                          const NCollection_DynamicArray<gp_Pnt>& theBadPoints);
+
+static bool isFreeFormSurface(const occ::handle<Geom_Surface>& theSurf);
+
+static bool hasDegeneratedEdge(const TopoDS_Face& theFace);
+
+static bool offsetExceedsCurvature(const TopoDS_Face&               theFace,
+                                   const occ::handle<Geom_Surface>& theSurf,
+                                   const double                     theOffset);
 
 //---------------------------------------------------------------------
 static void UpdateTolerance(
@@ -1003,7 +1013,8 @@ void BRepOffset_MakeOffset::MakeOffsetShape(const Message_ProgressRange& theRang
   if (myOffsetShape.IsNull())
   {
     // not done
-    myDone = false;
+    myDone  = false;
+    myError = BRepOffset_UnknownError;
     return;
   }
   //--------------
@@ -1073,6 +1084,15 @@ void BRepOffset_MakeOffset::MakeOffsetShape(const Message_ProgressRange& theRang
     {
       return;
     }
+  }
+
+  // An offset that leaves no face (e.g. inwards by more than half of the thickness) is a failure,
+  // not an empty result
+  if (myOffsetShape.IsNull() || !TopExp_Explorer(myOffsetShape, TopAbs_FACE).More())
+  {
+    myOffsetShape.Nullify();
+    myError = BRepOffset_UnknownError;
+    return;
   }
 
   myDone = true;
@@ -4452,6 +4472,27 @@ bool BRepOffset_MakeOffset::CheckInputData(const Message_ProgressRange& theRange
       return false;
     }
 
+    // An offset towards the center of curvature by the radius of curvature or more gives an
+    // offset surface with a cusp or intersecting itself. Analytic surfaces are processed when
+    // the offset faces are built (degenerated or reversed faces), and so are BSpline faces with
+    // a degenerated edge (apex); the other BSpline and Bezier faces are checked here. Not with
+    // offsets set on faces: they are spread to tangent faces later.
+    if (myMode == BRepOffset_Skin && myFaceOffset.IsEmpty() && isFreeFormSurface(aSurf)
+        && !hasDegeneratedEdge(aF))
+    {
+      double aFaceOffset = myOffset;
+      if (aF.Orientation() == TopAbs_REVERSED)
+      {
+        aFaceOffset = -aFaceOffset; // as in BRepOffset_Offset: along the normal of the surface
+      }
+      if (std::abs(aFaceOffset) > myTol && offsetExceedsCurvature(aF, aSurf, aFaceOffset))
+      {
+        myError    = BRepOffset_OffsetExceedsCurvature;
+        myBadShape = aF;
+        return false;
+      }
+    }
+
     // Get degenerated points, to avoid check them.
     NCollection_DynamicArray<gp_Pnt> aBad3dPnts;
     TopExp_Explorer                  anExpFE(aF, TopAbs_EDGE);
@@ -4619,6 +4660,75 @@ BRepOffset_Error checkSinglePoint(const double                            theUPa
   }
 
   return BRepOffset_NoError;
+}
+
+//=======================================================================
+// function : isFreeFormSurface
+// purpose  : BSpline and Bezier surfaces, whose offset is not processed specifically (analytic
+//           surfaces and surfaces swept by analytic curves are, e.g. at the apex of a cone)
+//=======================================================================
+bool isFreeFormSurface(const occ::handle<Geom_Surface>& theSurf)
+{
+  const GeomAbs_SurfaceType aType = GeomAdaptor_Surface(theSurf).GetType();
+  return aType == GeomAbs_BSplineSurface || aType == GeomAbs_BezierSurface;
+}
+
+//=======================================================================
+// function : hasDegeneratedEdge
+// purpose  :
+//=======================================================================
+bool hasDegeneratedEdge(const TopoDS_Face& theFace)
+{
+  for (TopExp_Explorer anExp(theFace, TopAbs_EDGE); anExp.More(); anExp.Next())
+  {
+    if (BRep_Tool::Degenerated(TopoDS::Edge(anExp.Current())))
+    {
+      return true;
+    }
+  }
+  return false;
+}
+
+//=======================================================================
+// function : offsetExceedsCurvature
+// purpose  : Checks on a grid of the face whether the offset theOffset along the normal of
+//           the surface reaches a center of curvature (curvature * offset >= 1)
+//=======================================================================
+bool offsetExceedsCurvature(const TopoDS_Face&               theFace,
+                            const occ::handle<Geom_Surface>& theSurf,
+                            const double                     theOffset)
+{
+  const int aPntPerDim = 20; // same grid as the check of normals
+  double    aUmin, aUmax, aVmin, aVmax;
+  BRepTools::UVBounds(theFace, aUmin, aUmax, aVmin, aVmax);
+  GeomLProp_SLProps aProps(theSurf, 2, Precision::Confusion());
+  for (int i = 0; i <= aPntPerDim; i++)
+  {
+    const double aUParam = aUmin + (aUmax - aUmin) * i / aPntPerDim;
+    for (int j = 0; j <= aPntPerDim; j++)
+    {
+      const double aVParam = aVmin + (aVmax - aVmin) * j / aPntPerDim;
+      aProps.SetParameters(aUParam, aVParam);
+      if (!aProps.IsCurvatureDefined())
+      {
+        continue;
+      }
+      // the curvature is positive when the surface bends towards its normal
+      const double aMaxCurvature = std::max(aProps.MaxCurvature(), aProps.MinCurvature());
+      if (aMaxCurvature * theOffset < 1.0 - Precision::Confusion())
+      {
+        continue;
+      }
+      // the bounding box in UV may cover more than the face
+      if (BRepClass_FaceClassifier(theFace, gp_Pnt2d(aUParam, aVParam), Precision::PConfusion())
+            .State()
+          != TopAbs_OUT)
+      {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 //=======================================================================
