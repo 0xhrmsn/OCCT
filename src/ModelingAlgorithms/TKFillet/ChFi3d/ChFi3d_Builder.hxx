@@ -763,6 +763,11 @@ protected:
   bool                                                                              hasresult;
 
 private:
+  //! Check of the wires of the faces created or modified by the fillets: if one is defective
+  //! (intersecting or open wires, e.g. fillets too big for the shape), the stripes touching it
+  //! are reported as faulty, the result is kept as BadShape() and the computation fails.
+  Standard_EXPORT void checkModifiedFaces();
+
   Standard_EXPORT bool FaceTangency(const TopoDS_Edge&   E0,
                                     const TopoDS_Edge&   E1,
                                     const TopoDS_Vertex& V) const;

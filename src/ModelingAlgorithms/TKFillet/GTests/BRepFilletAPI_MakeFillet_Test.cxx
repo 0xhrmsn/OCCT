@@ -12,8 +12,10 @@
 // commercial license or contractual agreement.
 
 #include <cmath>
+#include <vector>
 
 #include <BRep_Builder.hxx>
+#include <BRep_Tool.hxx>
 #include <BRepAlgoAPI_BooleanOperation.hxx>
 #include <BRepAlgoAPI_Common.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
@@ -23,6 +25,7 @@
 #include <BRepBuilderAPI_MakePolygon.hxx>
 #include <BRepBuilderAPI_MakeWire.hxx>
 #include <BRepCheck_Analyzer.hxx>
+#include <BRepFilletAPI_MakeChamfer.hxx>
 #include <BRepFilletAPI_MakeFillet.hxx>
 #include <BRepGProp.hxx>
 #include <ChFi3d_FilletShape.hxx>
@@ -532,4 +535,174 @@ TEST(BRepFilletAPI_MakeFilletTest, OCC426_RevolveFuseUnifyFillet)
   GProp_GProps aResultProps;
   BRepGProp::SurfaceProperties(aResult, aResultProps);
   EXPECT_NEAR(aResultProps.Mass(), 7507.61, 7507.61 * 0.001) << "Surface area mismatch";
+}
+
+namespace
+{
+struct CubeFilletResult
+{
+  bool         IsDone           = false;
+  int          NbFaultyContours = 0;
+  TopoDS_Shape Shape;
+};
+
+// Distinct edges of the cube 10 in the order of TopExp_Explorer.
+std::vector<TopoDS_Edge> cubeEdges(const TopoDS_Shape& theBox)
+{
+  std::vector<TopoDS_Edge> anEdges;
+  for (TopExp_Explorer anExp(theBox, TopAbs_EDGE); anExp.More(); anExp.Next())
+  {
+    bool isKnown = false;
+    for (const TopoDS_Edge& anEdge : anEdges)
+    {
+      isKnown = isKnown || anEdge.IsSame(anExp.Current());
+    }
+    if (!isKnown)
+    {
+      anEdges.push_back(TopoDS::Edge(anExp.Current()));
+    }
+  }
+  return anEdges;
+}
+
+// Fillets of radius theRadius on the edges theEdges (indices in cubeEdges(), from 1) of the
+// cube 10.
+CubeFilletResult filletCube(const double theRadius, const std::vector<int>& theEdges)
+{
+  const TopoDS_Shape             aBox    = BRepPrimAPI_MakeBox(10.0, 10.0, 10.0).Shape();
+  const std::vector<TopoDS_Edge> anEdges = cubeEdges(aBox);
+  BRepFilletAPI_MakeFillet       aMaker(aBox);
+  for (const int anIndex : theEdges)
+  {
+    aMaker.Add(theRadius, anEdges[anIndex - 1]);
+  }
+  aMaker.Build();
+  CubeFilletResult aResult;
+  aResult.IsDone           = aMaker.IsDone();
+  aResult.NbFaultyContours = aMaker.NbFaultyContours();
+  if (aResult.IsDone)
+  {
+    aResult.Shape = aMaker.Shape();
+  }
+  return aResult;
+}
+
+// Indices of the edges of the face x = 0 of the cube (both vertices at x = 0).
+std::vector<int> edgesOfFaceX0()
+{
+  const std::vector<TopoDS_Edge> anEdges = cubeEdges(BRepPrimAPI_MakeBox(10.0, 10.0, 10.0).Shape());
+  std::vector<int>               aResult;
+  for (size_t i = 0; i < anEdges.size(); ++i)
+  {
+    bool isOnFace = true;
+    for (TopExp_Explorer aVExp(anEdges[i], TopAbs_VERTEX); aVExp.More(); aVExp.Next())
+    {
+      isOnFace = isOnFace && std::abs(BRep_Tool::Pnt(TopoDS::Vertex(aVExp.Current())).X()) < 1.0e-9;
+    }
+    if (isOnFace)
+    {
+      aResult.push_back(static_cast<int>(i) + 1);
+    }
+  }
+  return aResult;
+}
+} // namespace
+
+// Fillets that cannot fit (opposite fillets of a face overlap) used to be reported as done with an
+// invalid result: intersecting or self-intersecting wires on the faces.
+TEST(BRepFilletAPI_MakeFilletTest, CubeFilletsTooBig_ReportedAsFailure)
+{
+  const std::vector<int> anAll = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+  for (const double aRadius : {5.5, 6.0, 7.0, 9.9})
+  {
+    const CubeFilletResult aFillet = filletCube(aRadius, anAll);
+    EXPECT_FALSE(aFillet.IsDone) << "12 edges, radius " << aRadius;
+    EXPECT_GT(aFillet.NbFaultyContours, 0) << "12 edges, radius " << aRadius;
+  }
+  const std::vector<int> aFaceEdges = edgesOfFaceX0();
+  ASSERT_EQ(aFaceEdges.size(), 4u);
+  const CubeFilletResult aFillet = filletCube(6.0, aFaceEdges);
+  EXPECT_FALSE(aFillet.IsDone) << "4 edges of a face, radius 6";
+  EXPECT_GT(aFillet.NbFaultyContours, 0) << "4 edges of a face, radius 6";
+}
+
+// The fillets that fit are kept, with the exact volume of the rounded cube.
+TEST(BRepFilletAPI_MakeFilletTest, CubeFilletsThatFit_StillBuilt)
+{
+  const std::vector<int> anAll = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+  for (const double aRadius : {1.0, 2.5, 4.9})
+  {
+    const CubeFilletResult aFillet = filletCube(aRadius, anAll);
+    ASSERT_TRUE(aFillet.IsDone) << "radius " << aRadius;
+    EXPECT_TRUE(BRepCheck_Analyzer(aFillet.Shape).IsValid()) << "radius " << aRadius;
+    const double aSide   = 10.0 - 2.0 * aRadius;
+    const double aVolume = aSide * aSide * aSide + 6.0 * aSide * aSide * aRadius
+                           + 3.0 * M_PI * aRadius * aRadius * aSide
+                           + 4.0 / 3.0 * M_PI * aRadius * aRadius * aRadius;
+    GProp_GProps aProps;
+    BRepGProp::VolumeProperties(aFillet.Shape, aProps);
+    EXPECT_NEAR(aProps.Mass(), aVolume, 1.0e-6 * aVolume) << "radius " << aRadius;
+  }
+  // a single edge accepts a radius almost up to the side
+  const CubeFilletResult aOne = filletCube(9.9, {1});
+  ASSERT_TRUE(aOne.IsDone);
+  EXPECT_TRUE(BRepCheck_Analyzer(aOne.Shape).IsValid());
+  // four edges of a face with fillets that fit
+  const CubeFilletResult aFace = filletCube(4.9, edgesOfFaceX0());
+  ASSERT_TRUE(aFace.IsDone);
+  EXPECT_TRUE(BRepCheck_Analyzer(aFace.Shape).IsValid());
+}
+
+// After the failure the defective result is available for diagnosis, and the same maker builds
+// fillets that fit after a reset.
+TEST(BRepFilletAPI_MakeFilletTest, CubeFilletsTooBig_BadShapeAndRebuild)
+{
+  const TopoDS_Shape             aBox    = BRepPrimAPI_MakeBox(10.0, 10.0, 10.0).Shape();
+  const std::vector<TopoDS_Edge> anEdges = cubeEdges(aBox);
+  BRepFilletAPI_MakeFillet       aMaker(aBox);
+  for (const TopoDS_Edge& anEdge : anEdges)
+  {
+    aMaker.Add(6.0, anEdge);
+  }
+  aMaker.Build();
+  ASSERT_FALSE(aMaker.IsDone());
+  EXPECT_TRUE(aMaker.HasResult());
+  EXPECT_FALSE(aMaker.BadShape().IsNull());
+  ASSERT_GT(aMaker.NbFaultyContours(), 0);
+  EXPECT_NE(aMaker.StripeStatus(aMaker.FaultyContour(1)), ChFiDS_Ok);
+
+  aMaker.Reset();
+  for (int i = 1; i <= aMaker.NbContours(); ++i)
+  {
+    aMaker.SetRadius(2.0, i, 1);
+  }
+  aMaker.Build();
+  ASSERT_TRUE(aMaker.IsDone());
+  EXPECT_TRUE(BRepCheck_Analyzer(aMaker.Shape()).IsValid());
+}
+
+// Chamfers use the same computation: too big ones fail, those that fit are built.
+TEST(BRepFilletAPI_MakeFilletTest, CubeChamfersTooBig_ReportedAsFailure)
+{
+  const TopoDS_Shape             aBox    = BRepPrimAPI_MakeBox(10.0, 10.0, 10.0).Shape();
+  const std::vector<TopoDS_Edge> anEdges = cubeEdges(aBox);
+  for (const double aDist : {2.0, 6.0})
+  {
+    BRepFilletAPI_MakeChamfer aChamfer(aBox);
+    for (const TopoDS_Edge& anEdge : anEdges)
+    {
+      aChamfer.Add(aDist, anEdge);
+    }
+    aChamfer.Build();
+    if (aDist < 5.0)
+    {
+      ASSERT_TRUE(aChamfer.IsDone()) << aDist;
+      EXPECT_TRUE(BRepCheck_Analyzer(aChamfer.Shape()).IsValid()) << aDist;
+    }
+    else
+    {
+      // either refused by the computation or reported as faulty: never done with an invalid shape
+      EXPECT_TRUE(!aChamfer.IsDone() || BRepCheck_Analyzer(aChamfer.Shape()).IsValid()) << aDist;
+    }
+  }
 }

@@ -38,6 +38,12 @@
 #include <Standard_Integer.hxx>
 #include <NCollection_Map.hxx>
 #include <TopAbs_ShapeEnum.hxx>
+#include <BRepCheck_Analyzer.hxx>
+#include <BRepCheck_Status.hxx>
+#include <BRepCheck_Result.hxx>
+#include <TopExp.hxx>
+#include <NCollection_IndexedMap.hxx>
+#include <TopTools_ShapeMapHasher.hxx>
 #include <TopExp_Explorer.hxx>
 #include <TopoDS.hxx>
 #include <TopoDS_Edge.hxx>
@@ -171,6 +177,154 @@ void ChFi3d_Builder::ExtentAnalyse()
         break;
     }
   }
+}
+
+//=======================================================================
+// function : hasWireDefect
+// purpose  : Defects of the wires of a face that overlapping fillets give; the defects of
+//           the edges (flags, ranges) that the face may have from the input are not counted
+//=======================================================================
+static bool hasWireDefect(const TopoDS_Face& theFace)
+{
+  BRepCheck_Analyzer anAnalyzer(theFace, false);
+  if (anAnalyzer.IsValid())
+  {
+    return false;
+  }
+  auto isDefect = [](const NCollection_List<BRepCheck_Status>& theStatuses) {
+    for (NCollection_List<BRepCheck_Status>::Iterator anIt(theStatuses); anIt.More(); anIt.Next())
+    {
+      switch (anIt.Value())
+      {
+        case BRepCheck_SelfIntersectingWire:
+        case BRepCheck_IntersectingWires:
+        case BRepCheck_InvalidImbricationOfWires:
+        case BRepCheck_NotClosed:
+        case BRepCheck_EmptyWire:
+        case BRepCheck_BadOrientation:
+        case BRepCheck_BadOrientationOfSubshape:
+        case BRepCheck_UnorientableShape:
+          return true;
+        default:
+          break;
+      }
+    }
+    return false;
+  };
+  if (isDefect(anAnalyzer.Result(theFace)->Status()))
+  {
+    return true;
+  }
+  for (TopExp_Explorer anExp(theFace, TopAbs_WIRE); anExp.More(); anExp.Next())
+  {
+    const occ::handle<BRepCheck_Result>& aRes = anAnalyzer.Result(anExp.Current());
+    if (aRes.IsNull())
+    {
+      continue;
+    }
+    if (isDefect(aRes->Status())
+        || (aRes->IsStatusOnShape(theFace) && isDefect(aRes->StatusOnShape(theFace))))
+    {
+      return true;
+    }
+  }
+  return false;
+}
+
+//=======================================================================
+// function : checkModifiedFaces
+// purpose  : Check of the wires of the faces created or modified by the fillets; the stripes
+//           touching a defective face are reported as faulty and the computation fails
+//=======================================================================
+void ChFi3d_Builder::checkModifiedFaces()
+{
+  NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> anInitFaces;
+  TopExp::MapShapes(myShape, TopAbs_FACE, anInitFaces);
+  NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> aChecked, aBadFaces;
+  for (TopExp_Explorer anExp(myShapeResult, TopAbs_FACE); anExp.More(); anExp.Next())
+  {
+    const TopoDS_Shape& aFace = anExp.Current();
+    if (anInitFaces.Contains(aFace) || !aChecked.Add(aFace))
+    {
+      continue;
+    }
+    if (hasWireDefect(TopoDS::Face(aFace)))
+    {
+      aBadFaces.Add(aFace);
+    }
+  }
+  if (aBadFaces.IsEmpty())
+  {
+    return;
+  }
+
+  // the stripes whose fillet faces or split support faces are defective
+  TopOpeBRepDS_DataStructure& DStr       = myDS->ChangeDS();
+  auto                        isBadImage = [&](const NCollection_List<TopoDS_Shape>& theImages) {
+    for (NCollection_List<TopoDS_Shape>::Iterator anIt(theImages); anIt.More(); anIt.Next())
+    {
+      if (aBadFaces.Contains(anIt.Value()))
+      {
+        return true;
+      }
+    }
+    return false;
+  };
+  for (NCollection_List<occ::handle<ChFiDS_Stripe>>::Iterator anIt(myListStripe); anIt.More();
+       anIt.Next())
+  {
+    const occ::handle<ChFiDS_Stripe>&                                       aStripe = anIt.Value();
+    bool                                                                    isBad   = false;
+    const occ::handle<NCollection_HSequence<occ::handle<ChFiDS_SurfData>>>& aSeq =
+      aStripe->SetOfSurfData();
+    for (int i = 1; !aSeq.IsNull() && i <= aSeq->Length() && !isBad; ++i)
+    {
+      const occ::handle<ChFiDS_SurfData>& aSD = aSeq->Value(i);
+      isBad                                   = isBadImage(myCoup->NewFaces(aSD->Surf()));
+      for (const int anIndex : {aSD->IndexOfS1(), aSD->IndexOfS2()})
+      {
+        if (isBad || anIndex <= 0 || anIndex > DStr.NbShapes())
+        {
+          continue;
+        }
+        const TopoDS_Shape& aSupport = DStr.Shape(anIndex);
+        if (aSupport.ShapeType() != TopAbs_FACE)
+        {
+          continue;
+        }
+        for (const TopAbs_State aState : {TopAbs_IN, TopAbs_ON, TopAbs_OUT})
+        {
+          if (!isBad && myCoup->IsSplit(aSupport, aState))
+          {
+            isBad = isBadImage(myCoup->Splits(aSupport, aState));
+          }
+        }
+      }
+    }
+    if (isBad)
+    {
+      badstripes.Append(aStripe);
+    }
+  }
+  if (badstripes.IsEmpty())
+  {
+    // defective faces not traced back to a stripe (e.g. corner faces): all the stripes
+    badstripes.Assign(myListStripe);
+  }
+  for (NCollection_List<occ::handle<ChFiDS_Stripe>>::Iterator anIt(badstripes); anIt.More();
+       anIt.Next())
+  {
+    const occ::handle<ChFiDS_Spine>& aSpine = anIt.Value()->Spine();
+    if (!aSpine.IsNull() && aSpine->ErrorStatus() == ChFiDS_Ok)
+    {
+      aSpine->SetErrorStatus(ChFiDS_Error);
+    }
+  }
+  // the defective result is kept for diagnosis (HasResult(), BadShape())
+  badShape = myShapeResult;
+  myShapeResult.Nullify();
+  hasresult = true;
+  done      = false;
 }
 
 //=================================================================================================
@@ -670,6 +824,13 @@ void ChFi3d_Builder::Compute()
         BRepLib::SameParameter(aF, SameParTol, true);
         ShapeFix::SameParameter(aF, false, SameParTol);
       }
+    }
+    // Fillets too big for the shape (e.g. opposite fillets of a face overlapping, which the
+    // intersections between stripes do not detect) give faces with intersecting or open wires:
+    // a failure, not an invalid result
+    if (!hasresult)
+    {
+      checkModifiedFaces();
     }
   }
 }
