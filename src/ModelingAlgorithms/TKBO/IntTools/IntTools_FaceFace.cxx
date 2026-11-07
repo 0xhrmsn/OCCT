@@ -26,6 +26,7 @@
 #include <Geom2d_TrimmedCurve.hxx>
 #include <GeomAPI_ProjectPointOnSurf.hxx>
 #include <GeomAdaptor_Surface.hxx>
+#include <cmath>
 #include <GeomInt_IntSS.hxx>
 #include <GeomInt_WLApprox.hxx>
 #include <GeomLib_Check2dBSplineCurve.hxx>
@@ -136,6 +137,15 @@ static double FindMaxDistance(const occ::handle<Geom_Curve>&       theCurve,
                               const occ::handle<IntTools_Context>& theContext);
 
 static void CorrectPlaneBoundaries(double& aUmin, double& aUmax, double& aVmin, double& aVmax);
+
+static double PolylineDeviation(const occ::handle<IntPatch_WLine>&      theWL,
+                                const int                               theFirst,
+                                const int                               theLast,
+                                const occ::handle<GeomAdaptor_Surface>& theS1,
+                                const occ::handle<GeomAdaptor_Surface>& theS2,
+                                const TopoDS_Face&                      theF1,
+                                const TopoDS_Face&                      theF2,
+                                const occ::handle<IntTools_Context>&    theContext);
 
 //=================================================================================================
 
@@ -1218,6 +1228,11 @@ reapprox:;
           //
           aBSp = GeomInt_IntSS::MakeBSpline(WL, ifprm, ilprm);
           IntTools_Curve aIC(aBSp, H1, H2);
+          // The polyline deviates from the surfaces between the walking points, where a search
+          // for the maximal distance on a few intervals of the whole curve misses the maxima
+          aIC.SetTolerance(std::max(
+            aIC.Tolerance(),
+            PolylineDeviation(WL, ifprm, ilprm, myHS1, myHS2, myFace1, myFace2, myContext)));
           mySeqOfCurve.Append(aIC);
         } // for (i=1; i<=aNbParts; ++i) {
       } // if (!myApprox) {
@@ -1404,6 +1419,8 @@ reapprox:;
             }
             //
             IntTools_Curve aIC(aBSp, H1, H2);
+            aIC.SetTolerance(
+              PolylineDeviation(WL, ifprm, ilprm, myHS1, myHS2, myFace1, myFace2, myContext));
             mySeqOfCurve.Append(aIC);
           }
           else
@@ -1616,6 +1633,15 @@ reapprox:;
                   if (bPCurvesOk)
                   {
                     IntTools_Curve aIC(aBSp, H1, H2, aTolC);
+                    aIC.SetTolerance(std::max(aTolC,
+                                              PolylineDeviation(WL,
+                                                                ifprm,
+                                                                ilprm,
+                                                                myHS1,
+                                                                myHS2,
+                                                                myFace1,
+                                                                myFace2,
+                                                                myContext)));
                     mySeqOfCurve.Append(aIC);
                   }
                   else
@@ -2892,6 +2918,70 @@ int IndexType(const GeomAbs_SurfaceType aType)
     aIndex = 10;
   }
   return aIndex;
+}
+
+//=======================================================================
+// function : PolylineDeviation
+// purpose  : Estimate of the distance from the polyline through the walking points
+//           theFirst..theLast to the surfaces: for each segment, distance from the middle of the
+//           chord to the point of each surface at the middle of the parameters of its ends,
+//           which bounds the distance at the middle from above. Where this is far from the
+//           distance (non-uniform parametrization, pole), the middle is projected on the face.
+//=======================================================================
+double PolylineDeviation(const occ::handle<IntPatch_WLine>&      theWL,
+                         const int                               theFirst,
+                         const int                               theLast,
+                         const occ::handle<GeomAdaptor_Surface>& theS1,
+                         const occ::handle<GeomAdaptor_Surface>& theS2,
+                         const TopoDS_Face&                      theF1,
+                         const TopoDS_Face&                      theF2,
+                         const occ::handle<IntTools_Context>&    theContext)
+{
+  double aDevMax = 0.0;
+  for (int i = theFirst; i < theLast; ++i)
+  {
+    const IntSurf_PntOn2S& aP1    = theWL->Point(i);
+    const IntSurf_PntOn2S& aP2    = theWL->Point(i + 1);
+    const gp_Pnt           aMid   = gp_Pnt(0.5 * (aP1.Value().XYZ() + aP2.Value().XYZ()));
+    const double           aChord = aP1.Value().Distance(aP2.Value());
+    for (int j = 0; j < 2; ++j)
+    {
+      const occ::handle<GeomAdaptor_Surface>& aS = !j ? theS1 : theS2;
+      double                                  aU1, aV1, aU2, aV2;
+      if (!j)
+      {
+        aP1.ParametersOnS1(aU1, aV1);
+        aP2.ParametersOnS1(aU2, aV2);
+      }
+      else
+      {
+        aP1.ParametersOnS2(aU1, aV1);
+        aP2.ParametersOnS2(aU2, aV2);
+      }
+      // a segment crossing the seam of a periodic surface: its ends in the same period
+      if (aS->IsUPeriodic())
+      {
+        aU2 += aS->UPeriod() * std::round((aU1 - aU2) / aS->UPeriod());
+      }
+      if (aS->IsVPeriodic())
+      {
+        aV2 += aS->VPeriod() * std::round((aV1 - aV2) / aS->VPeriod());
+      }
+      double aDev = aMid.Distance(aS->Value(0.5 * (aU1 + aU2), 0.5 * (aV1 + aV2)));
+      if (aDev > 0.1 * aChord)
+      {
+        GeomAPI_ProjectPointOnSurf& aProj = theContext->ProjPS(!j ? theF1 : theF2);
+        aProj.Perform(aMid);
+        if (!aProj.IsDone() || aProj.NbPoints() == 0)
+        {
+          continue;
+        }
+        aDev = aProj.LowerDistance();
+      }
+      aDevMax = std::max(aDevMax, aDev);
+    }
+  }
+  return aDevMax;
 }
 
 //=================================================================================================

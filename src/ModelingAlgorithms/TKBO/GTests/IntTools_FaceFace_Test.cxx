@@ -13,19 +13,27 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <vector>
 
 #include <BRep_Builder.hxx>
+#include <BRep_Tool.hxx>
+#include <BRepAdaptor_Curve.hxx>
 #include <BRepAlgoAPI_Common.hxx>
-#include <BRepClass3d_SolidClassifier.hxx>
-#include <BRepGProp_Face.hxx>
+#include <BRepAlgoAPI_Section.hxx>
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakeWire.hxx>
+#include <BRepClass3d_SolidClassifier.hxx>
+#include <BRepGProp_Face.hxx>
 #include <BRepTools.hxx>
 #include <Geom_Circle.hxx>
 #include <Geom_CylindricalSurface.hxx>
 #include <Geom_Plane.hxx>
+#include <Geom_RectangularTrimmedSurface.hxx>
+#include <Geom_SurfaceOfLinearExtrusion.hxx>
+#include <GeomAPI_Interpolate.hxx>
+#include <GeomAPI_ProjectPointOnSurf.hxx>
 #include <gp_Ax2.hxx>
 #include <gp_Ax3.hxx>
 #include <gp_Circ.hxx>
@@ -33,6 +41,7 @@
 #include <gp_Pln.hxx>
 #include <IntTools_Curve.hxx>
 #include <IntTools_FaceFace.hxx>
+#include <NCollection_HArray1.hxx>
 #include <NCollection_Sequence.hxx>
 #include <TopExp_Explorer.hxx>
 #include <TopoDS.hxx>
@@ -421,4 +430,59 @@ TEST_F(IntTools_FaceFaceTest, OCC24005_PlaneCylinderIntersection)
   const NCollection_Sequence<IntTools_Curve>& aCurves = anInters.Lines();
   EXPECT_GE(aCurves.Length() + anInters.Points().Length(), 1)
     << "Expected at least one intersection result (curve or point)";
+}
+
+// Without approximation the section curve is the polyline through the walking points. Its
+// tolerance was the result of a search for the maximal distance on 11 intervals of the whole
+// curve, which misses the maxima between the points: the edge deviated from the faces by more
+// than its tolerance.
+TEST(IntTools_FaceFaceSectionTest, WithoutApproximation_ToleranceCoversDeviation)
+{
+  const double                             aY[7]  = {3.0, -8.0, 12.0, -4.0, 9.0, -13.0, 6.0};
+  const double                             aZ[7]  = {-6.0, 10.0, -2.0, 14.0, -9.0, 5.0, -11.0};
+  occ::handle<NCollection_HArray1<gp_Pnt>> aPnts1 = new NCollection_HArray1<gp_Pnt>(1, 7);
+  occ::handle<NCollection_HArray1<gp_Pnt>> aPnts2 = new NCollection_HArray1<gp_Pnt>(1, 7);
+  for (int i = 0; i < 7; ++i)
+  {
+    aPnts1->SetValue(i + 1, gp_Pnt(i * 16.0, aY[i], 0.0));
+    aPnts2->SetValue(i + 1, gp_Pnt(i * 16.0, 0.0, aZ[i]));
+  }
+  GeomAPI_Interpolate anInterp1(aPnts1, false, 1.0e-9), anInterp2(aPnts2, false, 1.0e-9);
+  anInterp1.Perform();
+  anInterp2.Perform();
+  ASSERT_TRUE(anInterp1.IsDone() && anInterp2.IsDone());
+  const occ::handle<Geom_Surface> aS1 = new Geom_RectangularTrimmedSurface(
+    new Geom_SurfaceOfLinearExtrusion(anInterp1.Curve(), gp_Dir(0, 0, 1)),
+    -100.0,
+    100.0,
+    false);
+  const occ::handle<Geom_Surface> aS2 = new Geom_RectangularTrimmedSurface(
+    new Geom_SurfaceOfLinearExtrusion(anInterp2.Curve(), gp_Dir(0, 1, 0)),
+    -100.0,
+    100.0,
+    false);
+  const TopoDS_Face aF1 = BRepBuilderAPI_MakeFace(aS1, 1.0e-7).Face();
+  const TopoDS_Face aF2 = BRepBuilderAPI_MakeFace(aS2, 1.0e-7).Face();
+
+  BRepAlgoAPI_Section aSection(aF1, aF2, false);
+  aSection.Approximation(false);
+  aSection.Build();
+  ASSERT_FALSE(aSection.HasErrors());
+  int aNbEdges = 0;
+  for (TopExp_Explorer anExp(aSection.Shape(), TopAbs_EDGE); anExp.More(); anExp.Next(), ++aNbEdges)
+  {
+    const TopoDS_Edge anEdge = TopoDS::Edge(anExp.Current());
+    BRepAdaptor_Curve aCurve(anEdge);
+    double            aDistMax = 0.0;
+    for (int j = 0; j <= 4000; ++j)
+    {
+      const gp_Pnt aP = aCurve.Value(
+        aCurve.FirstParameter() + (aCurve.LastParameter() - aCurve.FirstParameter()) * j / 4000);
+      GeomAPI_ProjectPointOnSurf aProj1(aP, aS1), aProj2(aP, aS2);
+      ASSERT_TRUE(aProj1.NbPoints() > 0 && aProj2.NbPoints() > 0);
+      aDistMax = std::max({aDistMax, aProj1.LowerDistance(), aProj2.LowerDistance()});
+    }
+    EXPECT_GE(BRep_Tool::Tolerance(anEdge), aDistMax);
+  }
+  EXPECT_EQ(aNbEdges, 1);
 }
