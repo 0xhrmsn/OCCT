@@ -164,16 +164,16 @@ protected:
   TopoDS_Shape                                                             mySFrom;
   TopoDS_Shape                                                             mySUntil;
   NCollection_DataMap<TopoDS_Shape, TopoDS_Shape, TopTools_ShapeMapHasher> myGluedF;
+  BRepFeat_StatusError                                                     myStatusError;
 
 private:
-  bool                 mySbOK;
-  bool                 mySkOK;
-  bool                 myGSOK;
-  bool                 mySFOK;
-  bool                 mySUOK;
-  bool                 myGFOK;
-  bool                 myPSOK;
-  BRepFeat_StatusError myStatusError;
+  bool mySbOK;
+  bool mySkOK;
+  bool myGSOK;
+  bool mySFOK;
+  bool mySUOK;
+  bool myGFOK;
+  bool myPSOK;
 };
 
 #include <BRepFeat_Form.lxx>

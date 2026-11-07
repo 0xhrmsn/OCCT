@@ -15,10 +15,13 @@
 // commercial license or contractual agreement.
 
 #include <Bnd_Box.hxx>
+#include <BRep_Tool.hxx>
 #include <BRepAlgo.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
 #include <BRepBndLib.hxx>
+#include <BRepCheck_Analyzer.hxx>
+#include <BRepGProp.hxx>
 #include <BRepFeat.hxx>
 #include <BRepFeat_MakeDPrism.hxx>
 #include <BRepLib.hxx>
@@ -31,6 +34,7 @@
 #include <Geom_RectangularTrimmedSurface.hxx>
 #include <Geom_Surface.hxx>
 #include <gp_Pln.hxx>
+#include <GProp_GProps.hxx>
 #include <gp_Pnt.hxx>
 #include <LocOpe.hxx>
 #include <LocOpe_CSIntersector.hxx>
@@ -48,6 +52,7 @@
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Solid.hxx>
 #include <TopTools_ShapeMapHasher.hxx>
+#include <NCollection_IndexedDataMap.hxx>
 #include <NCollection_Map.hxx>
 
 #ifdef OCCT_DEBUG
@@ -220,7 +225,11 @@ void BRepFeat_MakeDPrism::Perform(const double Height)
   double theheight = Height / cos(myAngle);
   //  myPbase.Orientation(TopAbs_FORWARD);
 
-  LocOpe_DPrism       theDPrism(myPbase, theheight, myAngle);
+  LocOpe_DPrism theDPrism(myPbase, theheight, myAngle);
+  if (!checkTool(theDPrism))
+  {
+    return;
+  }
   const TopoDS_Shape& VraiDPrism = theDPrism.Shape();
 
   MajMap(myPbase, theDPrism, myMap, myFShape, myLShape);
@@ -273,6 +282,7 @@ void BRepFeat_MakeDPrism::Perform(const double Height)
       Done();
     }
   }
+  checkResult();
 }
 
 //=======================================================================
@@ -309,9 +319,13 @@ void BRepFeat_MakeDPrism::Perform(const TopoDS_Shape& Until)
   occ::handle<Geom_Curve> C    = TestCurve(myPbase);
   int                     sens = SensOfPrism(C, mySUntil);
 
-  BRep_Builder        bB;
-  double              Height = sens * HeightMax(mySbase, mySkface, mySFrom, mySUntil);
-  LocOpe_DPrism       theDPrism(myPbase, Height, myAngle);
+  BRep_Builder  bB;
+  double        Height = sens * HeightMax(mySbase, mySkface, mySFrom, mySUntil);
+  LocOpe_DPrism theDPrism(myPbase, Height, myAngle);
+  if (!checkTool(theDPrism))
+  {
+    return;
+  }
   const TopoDS_Shape& VraiDPrism = theDPrism.Shape();
   if (!Trf)
   {
@@ -399,6 +413,10 @@ void BRepFeat_MakeDPrism::Perform(const TopoDS_Shape& Until)
         Done();
       }
     }
+    else
+    {
+      myStatusError = BRepFeat_NoIntersectU;
+    }
   }
   NCollection_List<TopoDS_Shape>::Iterator ited(myNewEdges);
   for (; ited.More(); ited.Next())
@@ -411,6 +429,7 @@ void BRepFeat_MakeDPrism::Perform(const TopoDS_Shape& Until)
       BRepLib::SameParameter(ledg, BRep_Tool::Tolerance(ledg));
     }
   }
+  checkResult();
 }
 
 //=================================================================================================
@@ -487,8 +506,12 @@ void BRepFeat_MakeDPrism::Perform(const TopoDS_Shape& From, const TopoDS_Shape& 
     sens = SensOfPrism(C, mySUntil);
   }
 
-  double              Height = sens * HeightMax(mySbase, myPbase, mySFrom, mySUntil);
-  LocOpe_DPrism       theDPrism(myPbase, Height, Height, myAngle);
+  double        Height = sens * HeightMax(mySbase, myPbase, mySFrom, mySUntil);
+  LocOpe_DPrism theDPrism(myPbase, Height, Height, myAngle);
+  if (!checkTool(theDPrism))
+  {
+    return;
+  }
   const TopoDS_Shape& VraiDPrism = theDPrism.Shape();
 
   if (!Trff)
@@ -613,6 +636,7 @@ void BRepFeat_MakeDPrism::Perform(const TopoDS_Shape& From, const TopoDS_Shape& 
       Done();
     }
   }
+  checkResult();
 }
 
 //=================================================================================================
@@ -634,7 +658,11 @@ void BRepFeat_MakeDPrism::PerformUntilEnd()
   double Height = HeightMax(mySbase, mySkface, mySFrom, mySUntil);
   //  myPbase.Orientation(TopAbs_FORWARD);
 
-  LocOpe_DPrism       theDPrism(myPbase, Height, myAngle);
+  LocOpe_DPrism theDPrism(myPbase, Height, myAngle);
+  if (!checkTool(theDPrism))
+  {
+    return;
+  }
   const TopoDS_Shape& VraiDPrism = theDPrism.Shape();
 
   MajMap(myPbase, theDPrism, myMap, myFShape, myLShape);
@@ -645,6 +673,7 @@ void BRepFeat_MakeDPrism::PerformUntilEnd()
   theDPrism.Curves(myCurves);
   myBCurve = theDPrism.BarycCurve();
   GlobalPerform();
+  checkResult();
 }
 
 //=======================================================================
@@ -686,7 +715,11 @@ void BRepFeat_MakeDPrism::PerformFromEnd(const TopoDS_Shape& Until)
   int                     sens   = SensOfPrism(C, mySUntil);
   double                  Height = sens * HeightMax(mySbase, mySkface, mySFrom, mySUntil);
 
-  LocOpe_DPrism       theDPrism(myPbase, Height, Height, myAngle);
+  LocOpe_DPrism theDPrism(myPbase, Height, Height, myAngle);
+  if (!checkTool(theDPrism))
+  {
+    return;
+  }
   const TopoDS_Shape& VraiDPrism = theDPrism.Shape();
   if (VraiDPrism.IsNull())
   {
@@ -814,6 +847,7 @@ void BRepFeat_MakeDPrism::PerformFromEnd(const TopoDS_Shape& Until)
       Done();
     }
   }
+  checkResult();
 }
 
 //=======================================================================
@@ -846,8 +880,12 @@ void BRepFeat_MakeDPrism::PerformThruAll()
   myGluedF.Clear();
   GluedFacesValid();
 
-  double              Height = HeightMax(mySbase, mySkface, mySFrom, mySUntil);
-  LocOpe_DPrism       theDPrism(myPbase, Height, Height, myAngle);
+  double        Height = HeightMax(mySbase, mySkface, mySFrom, mySUntil);
+  LocOpe_DPrism theDPrism(myPbase, Height, Height, myAngle);
+  if (!checkTool(theDPrism))
+  {
+    return;
+  }
   const TopoDS_Shape& VraiDPrism = theDPrism.Shape();
   MajMap(myPbase, theDPrism, myMap, myFShape, myLShape);
 
@@ -863,6 +901,10 @@ void BRepFeat_MakeDPrism::PerformThruAll()
       UpdateDescendants(c, myShape, false);
       Done();
     }
+    else
+    {
+      myStatusError = BRepFeat_EmptyCutResult;
+    }
   }
   else
   {
@@ -870,6 +912,7 @@ void BRepFeat_MakeDPrism::PerformThruAll()
     myBCurve = theDPrism.BarycCurve();
     GlobalPerform();
   }
+  checkResult();
 }
 
 //=======================================================================
@@ -909,7 +952,11 @@ void BRepFeat_MakeDPrism::PerformUntilHeight(const TopoDS_Shape& Until, const do
   occ::handle<Geom_Curve> C    = TestCurve(myPbase);
   int                     sens = SensOfPrism(C, mySUntil);
 
-  LocOpe_DPrism       theDPrism(myPbase, sens * Height, myAngle);
+  LocOpe_DPrism theDPrism(myPbase, sens * Height, myAngle);
+  if (!checkTool(theDPrism))
+  {
+    return;
+  }
   const TopoDS_Shape& VraiDPrism = theDPrism.Shape();
 
   if (!Trf)
@@ -993,7 +1040,12 @@ void BRepFeat_MakeDPrism::PerformUntilHeight(const TopoDS_Shape& Until, const do
         Done();
       }
     }
+    else
+    {
+      myStatusError = BRepFeat_NoIntersectU;
+    }
   }
+  checkResult();
 }
 
 //=======================================================================
@@ -1310,4 +1362,129 @@ static occ::handle<Geom_Curve> TestCurve(const TopoDS_Face& Base)
   gp_Ax1                 theAx(bar, Normale);
   occ::handle<Geom_Line> theLin = new Geom_Line(theAx);
   return theLin;
+}
+
+//=======================================================================
+// function : isFeaturePartValid
+// purpose  : Checks only what the feature added to the base: the faces of the
+//            result that are not faces of the base must be valid, and their
+//            edges must not be free unless they were free in the base. Defects
+//            already present elsewhere in the base (e.g. imported parts) are
+//            not the feature's.
+//=======================================================================
+
+static bool isFeaturePartValid(const TopoDS_Shape& theBase, const TopoDS_Shape& theResult)
+{
+  NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> aBaseFaces;
+  for (TopExp_Explorer anExp(theBase, TopAbs_FACE); anExp.More(); anExp.Next())
+  {
+    aBaseFaces.Add(anExp.Current());
+  }
+  NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher>
+    aBaseEF, aResultEF;
+  TopExp::MapShapesAndAncestors(theBase, TopAbs_EDGE, TopAbs_FACE, aBaseEF);
+  TopExp::MapShapesAndAncestors(theResult, TopAbs_EDGE, TopAbs_FACE, aResultEF);
+  NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> aChecked;
+  for (TopExp_Explorer anExp(theResult, TopAbs_FACE); anExp.More(); anExp.Next())
+  {
+    const TopoDS_Shape& aFace = anExp.Current();
+    if (aBaseFaces.Contains(aFace) || !aChecked.Add(aFace))
+    {
+      continue;
+    }
+    if (!BRepCheck_Analyzer(aFace).IsValid())
+    {
+      return false;
+    }
+    for (TopExp_Explorer anEdgeExp(aFace, TopAbs_EDGE); anEdgeExp.More(); anEdgeExp.Next())
+    {
+      const TopoDS_Edge& anEdge = TopoDS::Edge(anEdgeExp.Current());
+      if (BRep_Tool::Degenerated(anEdge) || aResultEF.FindFromKey(anEdge).Extent() != 1)
+      {
+        continue;
+      }
+      const int aBaseIndex = aBaseEF.FindIndex(anEdge);
+      if (aBaseIndex == 0 || aBaseEF(aBaseIndex).Extent() != 1)
+      {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+//=======================================================================
+// function : checkTool
+// purpose  : The drafted prism must be a solid of positive volume, otherwise
+//            the result of the feature is empty or wrong. A solid tool with
+//            local defects is accepted, its result is then checked.
+//=======================================================================
+
+bool BRepFeat_MakeDPrism::checkTool(const LocOpe_DPrism& theDPrism)
+{
+  // Called before any Done() of a Perform method: a reused object must not keep the state of
+  // its previous computation.
+  NotDone();
+  myToolHasDefects = false;
+  if (theDPrism.IsDone() && theDPrism.Shape().IsNull())
+  {
+    NotDone();
+    myStatusError = BRepFeat_NullRealTool;
+    return false;
+  }
+  bool isValid = theDPrism.IsDone();
+  if (isValid)
+  {
+    const TopoDS_Shape& aTool = theDPrism.Shape();
+
+    isValid = TopExp_Explorer(aTool, TopAbs_SOLID).More()
+              && !TopExp_Explorer(aTool, TopAbs_SHELL, TopAbs_SOLID).More()
+              && !TopExp_Explorer(aTool, TopAbs_FACE, TopAbs_SHELL).More();
+    // Each solid must have a positive volume (an inverted solid has a negative one).
+    for (TopExp_Explorer aSolidExp(aTool, TopAbs_SOLID); isValid && aSolidExp.More();
+         aSolidExp.Next())
+    {
+      GProp_GProps aProps;
+      BRepGProp::VolumeProperties(aSolidExp.Current(), aProps);
+      isValid = aProps.Mass() > 0.0;
+    }
+    if (isValid)
+    {
+      myToolHasDefects = !BRepCheck_Analyzer(aTool).IsValid();
+    }
+  }
+  if (!isValid)
+  {
+    NotDone();
+    myStatusError = BRepFeat_LocOpeNotDone;
+  }
+  return isValid;
+}
+
+//=======================================================================
+// function : checkResult
+// purpose  : A feature without any face in its result is a failure, as is
+//            a result built from a tool with local defects whose new part
+//            is invalid.
+//=======================================================================
+
+void BRepFeat_MakeDPrism::checkResult()
+{
+  if (!IsDone())
+  {
+    return;
+  }
+  if (myShape.IsNull() || !TopExp_Explorer(myShape, TopAbs_FACE).More())
+  {
+    NotDone();
+    myStatusError = myFuse ? BRepFeat_InvShape : BRepFeat_EmptyCutResult;
+    return;
+  }
+  if (myToolHasDefects && !isFeaturePartValid(mySbase, myShape))
+  {
+    NotDone();
+    myStatusError = BRepFeat_InvShape;
+    return;
+  }
+  myStatusError = BRepFeat_OK;
 }

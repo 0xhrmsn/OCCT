@@ -32,6 +32,7 @@
 class Geom_Curve;
 class TopoDS_Shape;
 class TopoDS_Edge;
+class LocOpe_DPrism;
 
 //! Describes functions to build draft
 //! prism topologies from basis shape surfaces. These can be depressions or protrusions.
@@ -69,13 +70,14 @@ public:
                       const double        Angle,
                       const int           Fuse,
                       const bool          Modify)
+      : myToolHasDefects(false)
   {
     Init(Sbase, Pbase, Skface, Angle, Fuse, Modify);
   }
 
   BRepFeat_MakeDPrism()
       : myAngle(RealLast()),
-        myStatusError(BRepFeat_OK)
+        myToolHasDefects(false)
   {
   }
 
@@ -142,6 +144,14 @@ public:
   Standard_EXPORT const NCollection_List<TopoDS_Shape>& LatEdges();
 
 private:
+  //! Marks the feature as not done when the drafted prism tool is not a solid of positive
+  //! volume. Returns true if the tool can be used.
+  bool checkTool(const LocOpe_DPrism& theDPrism);
+
+  //! Marks the feature as not done when its result has no face, or when the tool had local
+  //! defects and the result is not valid; sets the status to BRepFeat_OK when it is done.
+  void checkResult();
+
   TopoDS_Face myPbase;
   NCollection_DataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher>
                                                 mySlface;
@@ -150,7 +160,7 @@ private:
   occ::handle<Geom_Curve>                       myBCurve;
   NCollection_List<TopoDS_Shape>                myTopEdges;
   NCollection_List<TopoDS_Shape>                myLatEdges;
-  BRepFeat_StatusError                          myStatusError;
+  bool                                          myToolHasDefects;
 };
 
 #endif // _BRepFeat_MakeDPrism_HeaderFile

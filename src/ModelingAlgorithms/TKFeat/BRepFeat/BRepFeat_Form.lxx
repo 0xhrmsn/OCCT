@@ -22,14 +22,14 @@ inline BRepFeat_Form::BRepFeat_Form()
       myPerfSelection(BRepFeat_NoSelection),
       myJustGluer(false),
       myJustFeat(false),
+      myStatusError(BRepFeat_NotInitialized),
       mySbOK(false),
       mySkOK(false),
       myGSOK(false),
       mySFOK(false),
       mySUOK(false),
       myGFOK(false),
-      myPSOK(false),
-      myStatusError(BRepFeat_NotInitialized)
+      myPSOK(false)
 
 {
 }
