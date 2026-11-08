@@ -52,6 +52,11 @@ static void Descendants(const TopoDS_Shape&,
                         BRepFeat_Builder&,
                         NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher>&);
 
+static void UpdateDescendantsByBuilder(
+  NCollection_DataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher>&,
+  const BRepFeat_Builder&,
+  const TopoDS_Shape&);
+
 //=======================================================================
 // function : Perform
 // purpose  : topological reconstruction of the result
@@ -1226,13 +1231,10 @@ void BRepFeat_Form::GlobalPerform()
       {
         myShape = theBuilder.Shape();
       }
-      Done();
     }
-    else
-    {
-      // all is already done
-      Done();
-    }
+    // The descendants of the faces are given through the history of the builder.
+    UpdateDescendantsByBuilder(myMap, theBuilder, myShape);
+    Done();
   }
 
   myStatusError = BRepFeat_OK;
@@ -1575,5 +1577,59 @@ void BRepFeat_Form::UpdateDescendants(const BRepAlgoAPI_BooleanOperation& aBOP,
         }
       }
     }
+  }
+}
+
+//=======================================================================
+// function : UpdateDescendantsByBuilder
+// purpose  : replaces the descendant faces in theMap by their images in
+//            theResult (the history of the builder is not updated by
+//            PerformResult, its images are)
+//=======================================================================
+static void UpdateDescendantsByBuilder(
+  NCollection_DataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher>&
+                          theMap,
+  const BRepFeat_Builder& theBuilder,
+  const TopoDS_Shape&     theResult)
+{
+  NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> aResultFaces;
+  for (TopExp_Explorer anExp(theResult, TopAbs_FACE); anExp.More(); anExp.Next())
+  {
+    aResultFaces.Add(anExp.Current());
+  }
+  NCollection_DataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher>::
+    Iterator anIt(theMap);
+  for (; anIt.More(); anIt.Next())
+  {
+    NCollection_List<TopoDS_Shape>                         aNewList;
+    NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> anAdded;
+    for (const TopoDS_Shape& aDesc : anIt.Value())
+    {
+      if (aDesc.ShapeType() != TopAbs_FACE)
+      {
+        continue;
+      }
+      if (aResultFaces.Contains(aDesc))
+      {
+        if (anAdded.Add(aDesc))
+        {
+          aNewList.Append(aDesc);
+        }
+        continue;
+      }
+      // Images of the face (its splits; same-domain splits are already replaced by their
+      // representative, and the splits rebuilt by PerformResult are in the images).
+      if (const NCollection_List<TopoDS_Shape>* anImages = theBuilder.Images().Seek(aDesc))
+      {
+        for (const TopoDS_Shape& anImage : *anImages)
+        {
+          if (aResultFaces.Contains(anImage) && anAdded.Add(anImage))
+          {
+            aNewList.Append(anImage);
+          }
+        }
+      }
+    }
+    anIt.ChangeValue() = aNewList;
   }
 }
