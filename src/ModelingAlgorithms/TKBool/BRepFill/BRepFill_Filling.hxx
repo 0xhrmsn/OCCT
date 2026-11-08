@@ -176,8 +176,14 @@ public:
 
   Standard_EXPORT TopoDS_Face Face() const;
 
-  //! Returns the list of shapes generated from the
-  //! shape <S>.
+  //! Returns the list of shapes generated from the shape <S>:
+  //! - for an edge of the boundary, the new edge built from it;
+  //! - for a vertex of the boundary, the new vertex;
+  //! - for an edge given as an inner constraint (not a bound), the face;
+  //! - for a face given as a free constraint, the new edges of the boundary built on
+  //!   it, then the face.
+  //! A face given as a support of a constraint generates nothing. A filling bounded
+  //! only by edges has no shape generating the face.
   Standard_EXPORT const NCollection_List<TopoDS_Shape>& Generated(const TopoDS_Shape& S);
 
   Standard_EXPORT double G0Error() const;
@@ -228,6 +234,10 @@ private:
   bool                                                                     myAnisotropie;
   bool                                                                     myIsInitFaceGiven;
   bool                                                                     myIsDone;
+
+  //! Face given as a free constraint -> edges of the boundary built on it.
+  NCollection_DataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher>
+    myFreeBounds;
 };
 
 #endif // _BRepFill_Filling_HeaderFile

@@ -579,6 +579,7 @@ void BRepFill_Filling::Build()
                                                   myTolCurv,
                                                   myAnisotropie));
 
+  myFreeBounds.Clear();
   if (myBoundary.IsEmpty())
   {
     myIsDone = false;
@@ -654,6 +655,12 @@ void BRepFill_Filling::Build()
       occ::handle<Geom2d_BezierCurve> Line2d = new Geom2d_BezierCurve(Points);
       TopoDS_Edge                     E = BRepLib_MakeEdge(Line2d, CurSurface, FirstVtx, LastVtx);
       Add(E, CurFace, myFreeConstraints(j).myOrder);
+      NCollection_List<TopoDS_Shape>* aBounds = myFreeBounds.ChangeSeek(CurFace);
+      if (aBounds == nullptr)
+      {
+        aBounds = myFreeBounds.Bound(CurFace, NCollection_List<TopoDS_Shape>());
+      }
+      aBounds->Append(E);
       VerSeq.Remove(i, i + 1);
       break;
     } // for (i = 1; i <= VerSeq.Length(); i += 2)
@@ -793,7 +800,10 @@ TopoDS_Face BRepFill_Filling::Face() const
 
 //=======================================================================
 // function : Generated
-// purpose  : returns the new edge (first in list) made from old edge "S"
+// purpose  : returns the new edge (first in list) made from old edge "S".
+//            An edge given as an inner constraint generates the face; a face
+//            given as a free constraint generates the edges of the boundary
+//            built on it and the face.
 //=======================================================================
 const NCollection_List<TopoDS_Shape>& BRepFill_Filling::Generated(const TopoDS_Shape& S)
 {
@@ -802,6 +812,43 @@ const NCollection_List<TopoDS_Shape>& BRepFill_Filling::Generated(const TopoDS_S
   if (myOldNewMap.IsBound(S))
   {
     myGenerated.Append(myOldNewMap(S));
+  }
+
+  if (!myIsDone || myFace.IsNull())
+  {
+    return myGenerated;
+  }
+  if (S.ShapeType() == TopAbs_EDGE)
+  {
+    for (int i = 1; i <= myConstraints.Length(); ++i)
+    {
+      if (myConstraints(i).myEdge.IsSame(S))
+      {
+        myGenerated.Append(myFace);
+        break;
+      }
+    }
+  }
+  else if (S.ShapeType() == TopAbs_FACE)
+  {
+    if (const NCollection_List<TopoDS_Shape>* aBounds = myFreeBounds.Seek(S))
+    {
+      for (const TopoDS_Shape& anEdge : *aBounds)
+      {
+        if (myOldNewMap.IsBound(anEdge))
+        {
+          myGenerated.Append(myOldNewMap(anEdge));
+        }
+      }
+    }
+    for (int i = 1; i <= myFreeConstraints.Length(); ++i)
+    {
+      if (myFreeConstraints(i).myFace.IsSame(S))
+      {
+        myGenerated.Append(myFace);
+        break;
+      }
+    }
   }
 
   return myGenerated;

@@ -145,7 +145,7 @@ bool BRepOffsetAPI_MakeFilling::IsDone() const
 
 //=======================================================================
 // function : Generated
-// purpose  : returns the new edge (first in list) made from old edge "S"
+// purpose  : see BRepFill_Filling::Generated
 //=======================================================================
 const NCollection_List<TopoDS_Shape>& BRepOffsetAPI_MakeFilling::Generated(const TopoDS_Shape& S)
 {
