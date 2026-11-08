@@ -27,7 +27,10 @@
 #include <NCollection_Sequence.hxx>
 #include <NCollection_List.hxx>
 #include <ChFi2d_ConstructionError.hxx>
-class TopoDS_Face;
+#include <NCollection_DataMap.hxx>
+#include <NCollection_IndexedMap.hxx>
+#include <TopTools_ShapeMapHasher.hxx>
+#include <TopoDS_Face.hxx>
 class TopoDS_Edge;
 class TopoDS_Vertex;
 class TopoDS_Shape;
@@ -260,9 +263,28 @@ public:
   //! Returns the number of chamfers on the face modified by this algorithm.
   int NbChamfer() const;
 
-  //! Returns the list of shapes modified from the shape
-  //! <S>.
+  //! Returns the list of shapes modified from the shape <S>:
+  //! - for the initial face, the result face (once the algorithm is done);
+  //! - for a chamfered or filleted edge, the edge built from it.
+  //! The list is empty for any other shape.
   Standard_EXPORT const NCollection_List<TopoDS_Shape>& Modified(const TopoDS_Shape& S) override;
+
+  //! Returns the list of shapes generated from the shape <S>: for a vertex of the
+  //! initial face, the fillet or chamfer built at this vertex. The list is empty for
+  //! any other shape.
+  //! Warning
+  //! The history (Modified of the face, Generated, IsDeleted) refers to the last call
+  //! of Build(). The fillets and chamfers found on the modified face given to
+  //! Init(RefFace, ModFace) are not reported as generated: their vertex is not known.
+  //! Modified of an edge reflects the current state of the algorithm (also before Build()).
+  //! On a face of two edges, ModifyFillet and ModifyChamfer may rebuild the fillet at the
+  //! other common vertex; the modified fillet is then not reported as generated.
+  Standard_EXPORT const NCollection_List<TopoDS_Shape>& Generated(const TopoDS_Shape& S) override;
+
+  //! Returns true if <S>, a face, edge or vertex of the initial face, is not in the
+  //! result and has no modified shape: a filleted or chamfered vertex, or an edge
+  //! entirely removed by its fillets or chamfers.
+  Standard_EXPORT bool IsDeleted(const TopoDS_Shape& S) override;
 
   //! returns the number of new curves
   //! after the shape creation.
@@ -295,7 +317,28 @@ public:
     const Message_ProgressRange& theRange = Message_ProgressRange()) override;
 
 private:
-  ChFi2d_Builder myMakeChFi2d;
+  //! Records theCorner as the vertex replaced by the new edge theNewEdge.
+  void recordCorner(const TopoDS_Edge& theNewEdge, const TopoDS_Vertex& theCorner);
+
+  //! Moves the vertex recorded for theOldEdge to theNewEdge (or forgets it if theNewEdge is
+  //! null), when theOldEdge has been removed.
+  void moveCorner(const TopoDS_Edge& theOldEdge, const TopoDS_Edge& theNewEdge);
+
+  //! Clears the recorded history.
+  void clearHistory();
+
+private:
+  ChFi2d_Builder                                                myMakeChFi2d;
+  TopoDS_Face                                                   myInitialFace;
+  NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> myInitialShapes;
+  NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> myResultShapes;
+  //! New edge (fillet or chamfer) -> vertex of the face it replaces.
+  NCollection_DataMap<TopoDS_Shape, TopoDS_Shape, TopTools_ShapeMapHasher> myCorners;
+  //! Vertex of the initial face -> fillets and chamfers of the result built at it (last Build).
+  NCollection_DataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher>
+    myGeneratedFrom;
+  //! Edges of the initial face that had a descendant at the last Build.
+  NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> myModifiedEdges;
 };
 
 #include <BRepFilletAPI_MakeFillet2d.lxx>

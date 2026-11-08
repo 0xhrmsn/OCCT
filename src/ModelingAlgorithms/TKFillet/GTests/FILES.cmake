@@ -5,4 +5,5 @@ set(OCCT_TKFillet_GTests_FILES
   BRepFilletAPI_MakeChamfer_Test.cxx
   BRepFilletAPI_MakeFillet_Test.cxx
   ChFi3d_Builder_0_Test.cxx
+  BRepFilletAPI_MakeFillet2d_Test.cxx
 )
