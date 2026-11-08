@@ -684,7 +684,11 @@ void TDataStd_NamedData::Restore(const occ::handle<TDF_Attribute>& With)
     return;
   }
   // Integers
-  if (!ND->GetIntegersContainer().IsEmpty())
+  if (!ND->HasIntegers())
+  {
+    myIntegers.Nullify();
+  }
+  else
   {
     if (!HasIntegers())
     {
@@ -695,7 +699,11 @@ void TDataStd_NamedData::Restore(const occ::handle<TDF_Attribute>& With)
   }
 
   // Reals
-  if (!ND->GetRealsContainer().IsEmpty())
+  if (!ND->HasReals())
+  {
+    myReals.Nullify();
+  }
+  else
   {
     if (!HasReals())
     {
@@ -706,7 +714,11 @@ void TDataStd_NamedData::Restore(const occ::handle<TDF_Attribute>& With)
   }
 
   // Strings
-  if (!ND->GetStringsContainer().IsEmpty())
+  if (!ND->HasStrings())
+  {
+    myStrings.Nullify();
+  }
+  else
   {
     if (!HasStrings())
     {
@@ -717,7 +729,11 @@ void TDataStd_NamedData::Restore(const occ::handle<TDF_Attribute>& With)
   }
 
   // Bytes
-  if (!ND->GetBytesContainer().IsEmpty())
+  if (!ND->HasBytes())
+  {
+    myBytes.Nullify();
+  }
+  else
   {
     if (!HasBytes())
     {
@@ -728,13 +744,18 @@ void TDataStd_NamedData::Restore(const occ::handle<TDF_Attribute>& With)
   }
 
   // Arrays of integers
-  if (!ND->GetArraysOfIntegersContainer().IsEmpty())
+  if (!ND->HasArraysOfIntegers())
+  {
+    myArraysOfIntegers.Nullify();
+  }
+  else
   {
     if (!HasArraysOfIntegers())
     {
       NCollection_DataMap<TCollection_ExtendedString, occ::handle<NCollection_HArray1<int>>> aMap;
       myArraysOfIntegers = new TDataStd_HDataMapOfStringHArray1OfInteger(aMap);
     }
+    myArraysOfIntegers->ChangeMap().Clear();
     NCollection_DataMap<TCollection_ExtendedString, occ::handle<NCollection_HArray1<int>>>::Iterator
       itr(ND->GetArraysOfIntegersContainer());
     for (; itr.More(); itr.Next())
@@ -756,7 +777,11 @@ void TDataStd_NamedData::Restore(const occ::handle<TDF_Attribute>& With)
   }
 
   // Arrays of realss
-  if (!ND->GetArraysOfRealsContainer().IsEmpty())
+  if (!ND->HasArraysOfReals())
+  {
+    myArraysOfReals.Nullify();
+  }
+  else
   {
     if (!HasArraysOfReals())
     {
@@ -764,6 +789,7 @@ void TDataStd_NamedData::Restore(const occ::handle<TDF_Attribute>& With)
         aMap;
       myArraysOfReals = new TDataStd_HDataMapOfStringHArray1OfReal(aMap);
     }
+    myArraysOfReals->ChangeMap().Clear();
     NCollection_DataMap<TCollection_ExtendedString,
                         occ::handle<NCollection_HArray1<double>>>::Iterator
       itr(ND->GetArraysOfRealsContainer());
