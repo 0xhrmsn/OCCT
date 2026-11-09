@@ -60,6 +60,7 @@
 #include <STEPCAFControl_GDTProperty.hxx>
 #include <STEPConstruct_Styles.hxx>
 #include <STEPConstruct_UnitContext.hxx>
+#include <Precision.hxx>
 #include <STEPConstruct_ValidationProps.hxx>
 #include <STEPControl_StepModelType.hxx>
 #include <StepData_Factors.hxx>
@@ -3603,6 +3604,29 @@ occ::handle<StepDimTol_Datum> STEPCAFControl_Writer::writeDatumAP242(
 }
 
 //=======================================================================
+// function : AngleInUnit
+// purpose  : converts an angle of XCAF (degrees) to the plane angle unit written with it,
+//            as the reader converts it back to degrees (convertAngleValue)
+//=======================================================================
+static double AngleInUnit(const double            theDegrees,
+                          const StepBasic_Unit&   theUnit,
+                          const StepData_Factors& theLocalFactors)
+{
+  if (theUnit.IsNull() || theUnit.CaseNum(theUnit.Value()) != 1)
+  {
+    return theDegrees;
+  }
+  STEPConstruct_UnitContext aUnitCtx;
+  aUnitCtx.ComputeFactors(theUnit.NamedUnit(), theLocalFactors);
+  if (!aUnitCtx.PlaneAngleDone())
+  {
+    return theDegrees;
+  }
+  const double aFact = aUnitCtx.PlaneAngleFactor() * 180. / M_PI;
+  return std::abs(1. - aFact) > Precision::Confusion() ? theDegrees / aFact : theDegrees;
+}
+
+//=======================================================================
 // function : WriteDimValues
 // purpose  : auxiliary (write all data for given dimension: values,
 //           qualifiers, modifiers, orientation and tolerance class)
@@ -4246,7 +4270,8 @@ void STEPCAFControl_Writer::writeToleranceZone(
   const occ::handle<XSControl_WorkSession>&                 theWS,
   const occ::handle<XCAFDimTolObjects_GeomToleranceObject>& theObject,
   const occ::handle<StepDimTol_GeometricTolerance>&         theEntity,
-  const occ::handle<StepRepr_RepresentationContext>&        theRC)
+  const occ::handle<StepRepr_RepresentationContext>&        theRC,
+  const StepData_Factors&                                   theLocalFactors)
 {
   // Get working data
   const occ::handle<Interface_InterfaceModel>& aModel = theWS->Model();
@@ -4285,8 +4310,10 @@ void STEPCAFControl_Writer::writeToleranceZone(
     new StepBasic_PlaneAngleMeasureWithUnit();
   occ::handle<StepBasic_MeasureValueMember> aValueMember = new StepBasic_MeasureValueMember();
   aValueMember->SetName("PLANE_ANGLE_MEASURE");
-  aValueMember->SetReal(theObject->GetValueOfZoneModifier());
-  aPAMWU->Init(aValueMember, GetUnit(theRC, true));
+  const StepBasic_Unit anAngleUnit = GetUnit(theRC, true);
+  aValueMember->SetReal(
+    AngleInUnit(theObject->GetValueOfZoneModifier(), anAngleUnit, theLocalFactors));
+  aPAMWU->Init(aValueMember, anAngleUnit);
   occ::handle<StepDimTol_RunoutZoneOrientation> anOrientation =
     new StepDimTol_RunoutZoneOrientation();
   anOrientation->Init(aPAMWU);
@@ -4513,7 +4540,7 @@ void STEPCAFControl_Writer::writeGeomTolerance(
     }
   }
   aModel->AddWithRefs(aGeomTol);
-  writeToleranceZone(theWS, anObject, aGeomTol, theRC);
+  writeToleranceZone(theWS, anObject, aGeomTol, theRC, theLocalFactors);
   // Annotation plane and Presentation
   writePresentation(theWS,
                     anObject->GetPresentation(),

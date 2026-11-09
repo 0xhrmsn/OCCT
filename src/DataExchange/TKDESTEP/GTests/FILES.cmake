@@ -27,6 +27,7 @@ set(OCCT_TKDESTEP_GTests_FILES
     StepToTopoDS_TranslateFace_Test.cxx
     StepToGeom_Test.cxx
     StepTransientReplacements_Test.cxx
+    STEPCAFControl_AngularDimension_Test.cxx
     STEPCAFControl_Controller_Test.cxx
     STEPCAFControl_DimensionUnits_Test.cxx
     StepData_FieldArray_Test.cxx
