@@ -14,6 +14,8 @@
 // commercial license or contractual agreement.
 
 #include <BinTools.hxx>
+
+#include <limits>
 #include <BinTools_ShapeSet.hxx>
 #include <FSD_FileHeader.hxx>
 #include <OSD_FileSystem.hxx>
@@ -24,6 +26,11 @@
 bool BinTools::IsAvailable(Standard_IStream& IS, const int theNbItems, const size_t theItemSize)
 {
   if (theNbItems < 0 || IS.fail())
+  {
+    return false;
+  }
+  if (theItemSize != 0
+      && static_cast<uint64_t>(theNbItems) > std::numeric_limits<uint64_t>::max() / theItemSize)
   {
     return false;
   }

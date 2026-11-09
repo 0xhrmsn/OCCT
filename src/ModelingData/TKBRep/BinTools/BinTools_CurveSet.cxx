@@ -479,6 +479,13 @@ static Standard_IStream& operator>>(Standard_IStream& IS, occ::handle<Geom_BSpli
 
   BinTools::GetInteger(IS, nbknots);
 
+  // poles (3 reals each), knots (a real and an integer each)
+  if (!BinTools::IsAvailable(IS, nbpoles, 3 * sizeof(double))
+      || !BinTools::IsAvailable(IS, nbknots, sizeof(double) + sizeof(int)))
+  {
+    throw Standard_Failure("BinTools_CurveSet: B-spline curve: larger than the stream");
+  }
+
   NCollection_Array1<gp_Pnt> poles(1, nbpoles);
   NCollection_Array1<double> weights(1, nbpoles);
 

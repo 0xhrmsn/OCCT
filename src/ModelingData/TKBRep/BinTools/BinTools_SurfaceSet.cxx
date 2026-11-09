@@ -547,6 +547,12 @@ static Standard_IStream& operator>>(Standard_IStream& IS, occ::handle<Geom_Bezie
   vdegree = (int)aVal;
   //  std::cout << "\ttudegree  = " << udegree << ", vdegree = " << vdegree << std::endl;
 
+  // the degrees alone can ask for (2^16)^2 poles of 3 reals each
+  if (!BinTools::IsAvailable(IS, udegree + 1, (vdegree + 1) * 3 * sizeof(double)))
+  {
+    throw Standard_Failure("BinTools_SurfaceSet: Bezier surface: larger than the stream");
+  }
+
   NCollection_Array2<gp_Pnt> poles(1, udegree + 1, 1, vdegree + 1);
   NCollection_Array2<double> weights(1, udegree + 1, 1, vdegree + 1);
 
@@ -596,6 +602,15 @@ static Standard_IStream& operator>>(Standard_IStream& IS, occ::handle<Geom_BSpli
   BinTools::GetInteger(IS, nbvpoles);
   BinTools::GetInteger(IS, nbuknots);
   BinTools::GetInteger(IS, nbvknots);
+
+  // poles (3 reals each, in a grid), knots (a real and an integer each)
+  if (!BinTools::IsAvailable(IS, nbvpoles, 3 * sizeof(double))
+      || !BinTools::IsAvailable(IS, nbupoles, static_cast<size_t>(nbvpoles) * 3 * sizeof(double))
+      || !BinTools::IsAvailable(IS, nbuknots, sizeof(double) + sizeof(int))
+      || !BinTools::IsAvailable(IS, nbvknots, sizeof(double) + sizeof(int)))
+  {
+    throw Standard_Failure("BinTools_SurfaceSet: B-spline surface: larger than the stream");
+  }
 
   NCollection_Array2<gp_Pnt> poles(1, nbupoles, 1, nbvpoles);
   NCollection_Array2<double> weights(1, nbupoles, 1, nbvpoles);
