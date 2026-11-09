@@ -784,6 +784,56 @@ static void MakeList(NCollection_List<TopoDS_Shape>& OffsetFaces,
   }
 }
 
+//=======================================================================
+// function : HasOffsetOfNonCapFace
+// purpose  : returns true if theShape contains a face built from a face
+//            that is not a cap (the caps are only trimmed, not offset).
+//            The faces of theShape are the images in theImageOffset of the
+//            images in theInitOffsetFace (composed later by
+//            UpdateInitOffset in MakeSolid). Only face roots are considered:
+//            the roots of the faces built on edges and vertices (Arc join)
+//            are edges and vertices, and these faces are never the only
+//            offset faces of a result.
+//=======================================================================
+static bool HasOffsetOfNonCapFace(
+  const TopoDS_Shape&                                                  theShape,
+  const BRepAlgo_Image&                                                theInitOffsetFace,
+  const BRepAlgo_Image&                                                theImageOffset,
+  const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& theCaps)
+{
+  NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> anOffsetFaces;
+  for (const TopoDS_Shape& aRoot : theInitOffsetFace.Roots())
+  {
+    if (aRoot.ShapeType() != TopAbs_FACE || theCaps.Contains(aRoot)
+        || !theInitOffsetFace.HasImage(aRoot))
+    {
+      continue;
+    }
+    NCollection_List<TopoDS_Shape> anImages;
+    theInitOffsetFace.LastImage(aRoot, anImages);
+    for (const TopoDS_Shape& anImage : anImages)
+    {
+      NCollection_List<TopoDS_Shape> aSplits;
+      theImageOffset.LastImage(anImage, aSplits);
+      for (const TopoDS_Shape& aSplit : aSplits)
+      {
+        for (TopExp_Explorer anExp(aSplit, TopAbs_FACE); anExp.More(); anExp.Next())
+        {
+          anOffsetFaces.Add(anExp.Current());
+        }
+      }
+    }
+  }
+  for (TopExp_Explorer anExp(theShape, TopAbs_FACE); anExp.More(); anExp.Next())
+  {
+    if (anOffsetFaces.Contains(anExp.Current()))
+    {
+      return true;
+    }
+  }
+  return false;
+}
+
 //=================================================================================================
 
 static void EvalMax(const TopoDS_Shape& S, double& Tol)
@@ -1021,6 +1071,16 @@ void BRepOffset_MakeOffset::MakeOffsetShape(const Message_ProgressRange& theRang
   // Unwinding 3D.
   //--------------
   SelectShells();
+  // The unwinding removes the shells with free borders other than those of the caps. When it
+  // removes every offset face, only the trimmed caps remain and a thick solid would be the
+  // initial shape: this is a failure.
+  if (!myFaces.IsEmpty()
+      && !HasOffsetOfNonCapFace(myOffsetShape, myInitOffsetFace, myImageOffset, myFaces))
+  {
+    myOffsetShape.Nullify();
+    myError = BRepOffset_UnknownError;
+    return;
+  }
   //----------------------------------
   // Remove INTERNAL edges if necessary
   //----------------------------------

@@ -11,10 +11,13 @@
 // Alternatively, this file may be used under the terms of Open CASCADE
 // commercial license or contractual agreement.
 
+#include <BRepBndLib.hxx>
 #include <BRepCheck_Analyzer.hxx>
+#include <BRepFilletAPI_MakeFillet.hxx>
 #include <BRepGProp.hxx>
 #include <BRepOffsetAPI_MakeThickSolid.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
+#include <Bnd_Box.hxx>
 #include <GProp_GProps.hxx>
 #include <NCollection_List.hxx>
 #include <Precision.hxx>
@@ -146,4 +149,148 @@ TEST(BRepOffsetAPI_MakeThickSolidTest, ThickSolidLargerVolume)
   // The thickened face should produce a solid with volume > 0.
   // A planar face of area A thickened by offset d produces volume approximately A*d.
   EXPECT_GT(aResultVolume, aFaceArea * anOffset * 0.5);
+}
+
+namespace
+{
+double volumeOf(const TopoDS_Shape& theShape)
+{
+  GProp_GProps aProps;
+  BRepGProp::VolumeProperties(theShape, aProps);
+  return aProps.Mass();
+}
+
+// Box 100 x 60 x 30 with every edge filleted with theRadius.
+TopoDS_Shape filletedBox(const double theRadius)
+{
+  const TopoDS_Shape       aBox = BRepPrimAPI_MakeBox(100.0, 60.0, 30.0).Shape();
+  BRepFilletAPI_MakeFillet aFillet(aBox);
+  for (TopExp_Explorer anExp(aBox, TopAbs_EDGE); anExp.More(); anExp.Next())
+  {
+    aFillet.Add(theRadius, TopoDS::Edge(anExp.Current()));
+  }
+  aFillet.Build();
+  return aFillet.Shape();
+}
+
+// Faces whose bounding box reaches above theZ: with theWhole, the whole box must lie above theZ.
+NCollection_List<TopoDS_Shape> facesAbove(const TopoDS_Shape& theShape,
+                                          const double        theZ,
+                                          const bool          theWhole = true)
+{
+  NCollection_List<TopoDS_Shape> aFaces;
+  for (TopExp_Explorer anExp(theShape, TopAbs_FACE); anExp.More(); anExp.Next())
+  {
+    Bnd_Box aBox;
+    BRepBndLib::Add(anExp.Current(), aBox);
+    if ((theWhole ? aBox.CornerMin().Z() : aBox.CornerMax().Z()) > theZ)
+    {
+      aFaces.Append(anExp.Current());
+    }
+  }
+  return aFaces;
+}
+} // namespace
+
+// Shelling a filleted box inwards: the offset of the side faces is removed by the unwinding, only
+// the trimmed top cap remains, and the result used to be the initial solid reported as done.
+// Required: either a failure, or a result that really removes material.
+TEST(BRepOffsetAPI_MakeThickSolidTest, ShellWithoutOffsetFaces_ReportsError)
+{
+  const TopoDS_Shape                   aShape = filletedBox(2.0);
+  const NCollection_List<TopoDS_Shape> aTop   = facesAbove(aShape, 29.9);
+  ASSERT_EQ(aTop.Extent(), 1);
+
+  const struct
+  {
+    GeomAbs_JoinType Join;
+    double           Thickness;
+  } aCases[] = {{GeomAbs_Arc, 2.0}, {GeomAbs_Intersection, 1.2}, {GeomAbs_Intersection, 2.0}};
+
+  for (const auto& aCase : aCases)
+  {
+    BRepOffsetAPI_MakeThickSolid aMaker;
+    aMaker.MakeThickSolidByJoin(aShape,
+                                aTop,
+                                -aCase.Thickness,
+                                1.0e-4,
+                                BRepOffset_Skin,
+                                aCase.Join == GeomAbs_Intersection,
+                                false,
+                                aCase.Join);
+    if (aMaker.IsDone())
+    {
+      const double anInitial = volumeOf(aShape);
+      EXPECT_LT(std::abs(volumeOf(aMaker.Shape())), anInitial * (1.0 - 1.0e-6))
+        << "join " << aCase.Join << ", thickness " << aCase.Thickness
+        << ": done without removing material, initial volume " << anInitial;
+    }
+    else
+    {
+      EXPECT_EQ(aMaker.MakeOffset().Error(), BRepOffset_UnknownError);
+    }
+  }
+}
+
+// Guard: a box with its top removed, joined by intersection (planar faces, the extended faces
+// path) and by arcs outwards (faces built on edges and vertices).
+TEST(BRepOffsetAPI_MakeThickSolidTest, BoxWithTopRemoved_IntersectionAndArc)
+{
+  const TopoDS_Shape                   aBox = BRepPrimAPI_MakeBox(100.0, 60.0, 30.0).Shape();
+  const NCollection_List<TopoDS_Shape> aTop = facesAbove(aBox, 29.9);
+  ASSERT_EQ(aTop.Extent(), 1);
+
+  const struct
+  {
+    GeomAbs_JoinType Join;
+    double           Offset;
+    double           Volume;
+  } aCases[] = {{GeomAbs_Intersection, -2.0, 100.0 * 60.0 * 30.0 - 96.0 * 56.0 * 28.0},
+                {GeomAbs_Intersection, 2.0, 104.0 * 64.0 * 32.0 - 100.0 * 60.0 * 30.0},
+                // Rounded outside: smaller than the sharp one.
+                {GeomAbs_Arc, 2.0, 32599.055928}};
+
+  for (const auto& aCase : aCases)
+  {
+    BRepOffsetAPI_MakeThickSolid aMaker;
+    aMaker.MakeThickSolidByJoin(aBox,
+                                aTop,
+                                aCase.Offset,
+                                1.0e-4,
+                                BRepOffset_Skin,
+                                aCase.Join == GeomAbs_Intersection,
+                                false,
+                                aCase.Join);
+    ASSERT_TRUE(aMaker.IsDone()) << "join " << aCase.Join << ", offset " << aCase.Offset;
+    EXPECT_TRUE(BRepCheck_Analyzer(aMaker.Shape()).IsValid());
+    EXPECT_NEAR(std::abs(volumeOf(aMaker.Shape())), aCase.Volume, 1.0e-5);
+  }
+}
+
+// Guard: a thick solid whose result has as many faces as the initial solid (one face kept,
+// five removed) is a slab, not a missing offset.
+TEST(BRepOffsetAPI_MakeThickSolidTest, BoxWithFiveFacesRemoved_GivesSlab)
+{
+  const TopoDS_Shape                   aBox  = BRepPrimAPI_MakeBox(100.0, 60.0, 30.0).Shape();
+  const NCollection_List<TopoDS_Shape> aFive = facesAbove(aBox, 1.0e-3, false);
+  ASSERT_EQ(aFive.Extent(), 5);
+
+  for (const GeomAbs_JoinType aJoin : {GeomAbs_Arc, GeomAbs_Intersection})
+  {
+    for (const double anOffset : {-2.0, 2.0})
+    {
+      BRepOffsetAPI_MakeThickSolid aMaker;
+      aMaker.MakeThickSolidByJoin(aBox,
+                                  aFive,
+                                  anOffset,
+                                  1.0e-4,
+                                  BRepOffset_Skin,
+                                  aJoin == GeomAbs_Intersection,
+                                  false,
+                                  aJoin);
+      ASSERT_TRUE(aMaker.IsDone()) << "join " << aJoin << ", offset " << anOffset;
+      EXPECT_TRUE(BRepCheck_Analyzer(aMaker.Shape()).IsValid());
+      EXPECT_NEAR(std::abs(volumeOf(aMaker.Shape())), 100.0 * 60.0 * 2.0, 1.0e-6);
+    }
+  }
 }
