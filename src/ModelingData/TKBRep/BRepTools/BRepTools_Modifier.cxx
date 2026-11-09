@@ -246,6 +246,9 @@ bool BRepTools_Modifier::Rebuild(const TopoDS_Shape&                        S,
   bool               No3DCurve = false; // in fact, if we have no
   // 3D geometry modification, it is necessary to test the existence of a 3D curve.
 
+  // triangulation of a face that keeps its surface, see NewTriangulation() below
+  occ::handle<Poly_Triangulation> aKeptTriangulation;
+
   // new geometry ?
 
   switch (ts)
@@ -277,12 +280,17 @@ bool BRepTools_Modifier::Rebuild(const TopoDS_Shape&                        S,
         { // the copied face already exists => update it
           B.UpdateFace(TopoDS::Face(result), aTriangulation);
         }
-        else
+        else if (!BRep_Tool::IsGeometric(TopoDS::Face(S)))
         { // create new face with bare triangulation
           B.MakeFace(TopoDS::Face(result), aTriangulation);
           result.Location(S.Location(), false);
+          rebuild = true;
         }
-        rebuild = true;
+        else
+        { // the surface is kept: the triangulation is set if the face is copied because of its
+          // sub-shapes, otherwise the face is not modified
+          aKeptTriangulation = aTriangulation;
+        }
       }
     }
     break;
@@ -377,6 +385,10 @@ bool BRepTools_Modifier::Rebuild(const TopoDS_Shape&                        S,
   {
     result = S.EmptyCopied();
     result.Orientation(TopAbs_FORWARD);
+    if (!aKeptTriangulation.IsNull())
+    {
+      B.UpdateFace(TopoDS::Face(result), aKeptTriangulation);
+    }
   }
 
   // copy the sub-elements
@@ -561,11 +573,19 @@ bool BRepTools_Modifier::Rebuild(const TopoDS_Shape&                        S,
             aPolyOnTria_2 = occ::handle<Poly_PolygonOnTriangulation>();
           }
         }
+        TopLoc_Location                 aLocation;
+        occ::handle<Poly_Triangulation> aNewFaceTria;
         if (aNewPonT)
         {
-          TopLoc_Location                 aLocation;
-          occ::handle<Poly_Triangulation> aNewFaceTria =
-            BRep_Tool::Triangulation(TopoDS::Face(myMap(face)), aLocation);
+          aNewFaceTria = BRep_Tool::Triangulation(TopoDS::Face(myMap(face)), aLocation);
+          // an edge that is not copied already holds its polygons on a triangulation that is
+          // kept by the face (input shape is not modified)
+          TopLoc_Location aFaceLoc;
+          aNewPonT =
+            !myMap(edge).IsSame(edge) || aNewFaceTria != BRep_Tool::Triangulation(face, aFaceLoc);
+        }
+        if (aNewPonT)
+        {
           TopoDS_Edge aNewEdge = TopoDS::Edge(myMap(edge));
           if (aPolyOnTria_2.IsNull())
           {

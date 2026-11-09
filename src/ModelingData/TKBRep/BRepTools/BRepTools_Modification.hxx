@@ -65,6 +65,8 @@ public:
   //! Returns true if the face has been modified according to changed triangulation.
   //! If the face has been modified:
   //! - T is a new triangulation on the face
+  //! For a face with a surface for which NewSurface() returns false, T is set on the face
+  //! only if the face is copied because of its sub-shapes; otherwise the face is kept as is.
   Standard_EXPORT virtual bool NewTriangulation(const TopoDS_Face&               F,
                                                 occ::handle<Poly_Triangulation>& T);
 
