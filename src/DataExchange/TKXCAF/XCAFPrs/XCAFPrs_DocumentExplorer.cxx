@@ -17,6 +17,7 @@
 #include <TDF_Tool.hxx>
 #include <TDocStd_Document.hxx>
 #include <XCAFDoc_ColorTool.hxx>
+#include <XCAFDoc_GraphNode.hxx>
 #include <XCAFDoc_DocumentTool.hxx>
 #include <XCAFDoc_ShapeTool.hxx>
 #include <XCAFDoc_VisMaterialTool.hxx>
@@ -81,6 +82,85 @@ static XCAFPrs_Style mergedStyle(const occ::handle<XCAFDoc_ColorTool>&       the
   return aStyle;
 }
 } // namespace
+
+//=======================================================================
+// function : applySHUOStyle
+// purpose  : applies the style of the SHUOs (styles of a specific occurrence in an assembly)
+//            ending at theLabel. theUpperComps are the components above theLabel, from the top.
+//            Like in XCAFPrs::CollectStyleSettings, the SHUO starting at the highest component
+//            wins and its style replaces the colors and the material of the occurrence.
+//=======================================================================
+static void applySHUOStyle(const occ::handle<XCAFDoc_ColorTool>&       theColorTool,
+                           const occ::handle<XCAFDoc_VisMaterialTool>& theVisMatTool,
+                           const NCollection_Sequence<TDF_Label>&      theUpperComps,
+                           const TDF_Label&                            theLabel,
+                           XCAFPrs_Style&                              theStyle)
+{
+  if (theColorTool.IsNull() || theUpperComps.IsEmpty() || !XCAFDoc_ShapeTool::IsComponent(theLabel))
+  {
+    return;
+  }
+  for (int aStart = theUpperComps.Upper(); aStart >= theUpperComps.Lower(); --aStart)
+  {
+    NCollection_Sequence<occ::handle<TDF_Attribute>> aSHUOs;
+    if (!XCAFDoc_ShapeTool::GetAllComponentSHUO(theUpperComps.Value(aStart), aSHUOs))
+    {
+      continue;
+    }
+    NCollection_Sequence<TDF_Label> aPath;
+    for (int aCompIter = aStart; aCompIter <= theUpperComps.Upper(); ++aCompIter)
+    {
+      aPath.Append(theUpperComps.Value(aCompIter));
+    }
+    aPath.Append(theLabel);
+    occ::handle<XCAFDoc_GraphNode> aSHUO;
+    if (!XCAFDoc_ShapeTool::FindSHUO(aPath, aSHUO))
+    {
+      continue;
+    }
+    XCAFPrs_Style aSHUOStyle;
+    if (!theVisMatTool.IsNull())
+    {
+      aSHUOStyle.SetMaterial(theVisMatTool->GetShapeMaterial(aSHUO->Label()));
+    }
+    Quantity_ColorRGBA aColor;
+    if (theColorTool->GetColor(aSHUO->Label(), XCAFDoc_ColorGen, aColor))
+    {
+      aSHUOStyle.SetColorCurv(aColor.GetRGB());
+      aSHUOStyle.SetColorSurf(aColor);
+    }
+    if (theColorTool->GetColor(aSHUO->Label(), XCAFDoc_ColorSurf, aColor))
+    {
+      aSHUOStyle.SetColorSurf(aColor);
+    }
+    if (theColorTool->GetColor(aSHUO->Label(), XCAFDoc_ColorCurv, aColor))
+    {
+      aSHUOStyle.SetColorCurv(aColor.GetRGB());
+    }
+    if (!aSHUOStyle.IsEmpty())
+    {
+      aSHUOStyle.SetVisibility(theStyle.IsVisible());
+      theStyle = aSHUOStyle;
+    }
+  }
+}
+
+//! Returns the components of the stack, from the top, up to theDepth included.
+static NCollection_Sequence<TDF_Label> upperComponents(
+  const NCollection_DynamicArray<XCAFPrs_DocumentNode>& theStack,
+  const int                                             theDepth)
+{
+  NCollection_Sequence<TDF_Label> aComps;
+  for (int aDepth = 0; aDepth <= theDepth; ++aDepth)
+  {
+    const TDF_Label& aLabel = theStack.Value(aDepth).Label;
+    if (XCAFDoc_ShapeTool::IsComponent(aLabel))
+    {
+      aComps.Append(aLabel);
+    }
+  }
+  return aComps;
+}
 
 //=================================================================================================
 
@@ -318,7 +398,15 @@ void XCAFPrs_DocumentExplorer::initCurrent(bool theIsAssembly)
                                   aTopNodeInStack.Style,
                                   myCurrent.Label,
                                   myCurrent.RefLabel);
-    myCurrent.Id        = DefineChildId(myCurrent.Label, aTopNodeInStack.Id);
+    if (!myColorTool.IsNull())
+    {
+      applySHUOStyle(myColorTool,
+                     myVisMatTool,
+                     upperComponents(myNodeStack, myTop),
+                     myCurrent.Label,
+                     myCurrent.Style);
+    }
+    myCurrent.Id = DefineChildId(myCurrent.Label, aTopNodeInStack.Id);
   }
 }
 
@@ -406,8 +494,16 @@ void XCAFPrs_DocumentExplorer::Next()
                                          aParent.Style,
                                          aNodeInStack.Label,
                                          aNodeInStack.RefLabel);
-        aNodeInStack.Id         = DefineChildId(aNodeInStack.Label, aParent.Id);
-        aNodeInStack.ChildIter  = TDF_ChildIterator(aNodeInStack.RefLabel);
+        if (!myColorTool.IsNull())
+        {
+          applySHUOStyle(myColorTool,
+                         myVisMatTool,
+                         upperComponents(myNodeStack, myTop - 1),
+                         aNodeInStack.Label,
+                         aNodeInStack.Style);
+        }
+        aNodeInStack.Id        = DefineChildId(aNodeInStack.Label, aParent.Id);
+        aNodeInStack.ChildIter = TDF_ChildIterator(aNodeInStack.RefLabel);
         myNodeStack.SetValue(myTop, aNodeInStack);
         if ((myFlags & XCAFPrs_DocumentExplorerFlags_OnlyLeafNodes) == 0)
         {

@@ -15,6 +15,8 @@
 
 #include <TopExp.hxx>
 #include <TopoDS.hxx>
+#include <XCAFDoc_ColorTool.hxx>
+#include <XCAFDoc_DocumentTool.hxx>
 #include <XCAFDoc_ShapeTool.hxx>
 #include <XCAFPrs.hxx>
 
@@ -75,6 +77,15 @@ void RWMesh_ShapeIterator::dispatchStyles(const TDF_Label&       theLabel,
   NCollection_IndexedDataMap<TopoDS_Shape, XCAFPrs_Style, TopTools_ShapeMapHasher> aStyles;
   XCAFPrs::CollectStyleSettings(theLabel, aDummyLoc, aStyles);
 
+  // theStyle is the style of the occurrence: the colors of the label merged with those of the
+  // component and of its SHUO, which win. It replaces the entry of the whole shape of the label,
+  // unless this entry takes its color from a layer; the styles of sub-shapes keep priority.
+  TopoDS_Shape aLabelShape;
+  XCAFDoc_ShapeTool::GetShape(theLabel, aLabelShape);
+  const bool toUseOccurrenceStyle =
+    (theStyle.IsSetColorSurf() || theStyle.IsSetColorCurv() || !theStyle.Material().IsNull())
+    && !XCAFDoc_DocumentTool::ColorTool(theLabel)->IsColorByLayer(theLabel);
+
   int aNbTypes[TopAbs_SHAPE] = {};
   for (int aTypeIter = myShapeType; aTypeIter >= TopAbs_COMPOUND; --aTypeIter)
   {
@@ -100,6 +111,12 @@ void RWMesh_ShapeIterator::dispatchStyles(const TDF_Label&       theLabel,
       }
 
       XCAFPrs_Style aCafStyle = aStyleIter.Value();
+      if (toUseOccurrenceStyle && aKeyShape.IsSame(aLabelShape))
+      {
+        const bool isVisible = aCafStyle.IsVisible();
+        aCafStyle            = theStyle;
+        aCafStyle.SetVisibility(isVisible);
+      }
       if (!aCafStyle.IsSetColorCurv() && theStyle.IsSetColorCurv())
       {
         aCafStyle.SetColorCurv(theStyle.GetColorCurv());
