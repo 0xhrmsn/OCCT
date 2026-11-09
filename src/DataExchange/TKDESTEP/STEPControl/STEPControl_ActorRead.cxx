@@ -1827,6 +1827,9 @@ occ::handle<TransferBRep_ShapeBinder> STEPControl_ActorRead::TransferEntity(
 
   // Start progress scope (no need to check if progress exists -- it is safe)
   Message_ProgressScope aPS(theProgress, "Transfer stage", isManifold ? 2 : 1);
+  // Tessellated items are translated only if their reading is not Off; they can be items of a
+  // B-rep representation (written with write.step.tessellated On), so Recognize() is not enough.
+  const bool aCanReadTessGeom               = aStepModel->InternalParameters.ReadTessellated != 0;
   const bool aReadTessellatedWhenNoBRepOnly = (aStepModel->InternalParameters.ReadTessellated == 2);
   bool       aHasGeom                       = true;
   try
@@ -1907,7 +1910,7 @@ occ::handle<TransferBRep_ShapeBinder> STEPControl_ActorRead::TransferEntity(
     // TODO: Normally, StepVisual_Tessellated* entities should be processed after
     //       StepShape_* entities in order to resolve links to BRep topological objects.
     //       Currently it is not guaranteed and might require changes in the processing order.
-    else if (start->IsKind(STANDARD_TYPE(StepVisual_TessellatedSolid)))
+    else if (aCanReadTessGeom && start->IsKind(STANDARD_TYPE(StepVisual_TessellatedSolid)))
     {
       myShapeBuilder.Init(GetCasted(StepVisual_TessellatedSolid, start),
                           TP,
@@ -1917,7 +1920,7 @@ occ::handle<TransferBRep_ShapeBinder> STEPControl_ActorRead::TransferEntity(
                           aRange);
       found = true;
     }
-    else if (start->IsKind(STANDARD_TYPE(StepVisual_TessellatedShell)))
+    else if (aCanReadTessGeom && start->IsKind(STANDARD_TYPE(StepVisual_TessellatedShell)))
     {
       myShapeBuilder.Init(GetCasted(StepVisual_TessellatedShell, start),
                           TP,
@@ -1927,7 +1930,7 @@ occ::handle<TransferBRep_ShapeBinder> STEPControl_ActorRead::TransferEntity(
                           aRange);
       found = true;
     }
-    else if (start->IsKind(STANDARD_TYPE(StepVisual_TessellatedFace)))
+    else if (aCanReadTessGeom && start->IsKind(STANDARD_TYPE(StepVisual_TessellatedFace)))
     {
       myShapeBuilder.Init(GetCasted(StepVisual_TessellatedFace, start),
                           TP,
@@ -1936,7 +1939,7 @@ occ::handle<TransferBRep_ShapeBinder> STEPControl_ActorRead::TransferEntity(
                           aLocalFactors);
       found = true;
     }
-    else if (start->IsKind(STANDARD_TYPE(StepVisual_TessellatedSurfaceSet)))
+    else if (aCanReadTessGeom && start->IsKind(STANDARD_TYPE(StepVisual_TessellatedSurfaceSet)))
     {
       myShapeBuilder.Init(GetCasted(StepVisual_TessellatedSurfaceSet, start),
                           TP,

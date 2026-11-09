@@ -12,6 +12,10 @@
 // commercial license or contractual agreement.
 
 #include <BRep_Tool.hxx>
+#include <Geom_ElementarySurface.hxx>
+#include <Geom_RectangularTrimmedSurface.hxx>
+#include <gp_Ax3.hxx>
+#include <gp_Trsf.hxx>
 #include <TopoDS_Shape.hxx>
 #include <Standard_Transient.hxx>
 #include <TopTools_ShapeMapHasher.hxx>
@@ -45,12 +49,15 @@ static void InitTriangulation(const occ::handle<Poly_Triangulation>&       theMe
                               occ::handle<NCollection_HArray2<double>>&    theNormals,
                               occ::handle<NCollection_HArray1<int>>&       theIndices,
                               occ::handle<NCollection_HArray2<int>>&       theTrias,
-                              const StepData_Factors&                      theLocalFactors)
+                              const StepData_Factors&                      theLocalFactors,
+                              const gp_Trsf&                               theTrsf,
+                              const bool                                   theToReverse)
 {
+  // the nodes are given in the frame of the face location, like its geometry written in STEP
   double aFactor = theLocalFactors.LengthFactor();
   for (int aNodeIndex = 1; aNodeIndex <= theMesh->NbNodes(); ++aNodeIndex)
   {
-    thePoints->SetValue(aNodeIndex, theMesh->Node(aNodeIndex).XYZ() / aFactor);
+    thePoints->SetValue(aNodeIndex, theMesh->Node(aNodeIndex).Transformed(theTrsf).XYZ() / aFactor);
   }
   theCoordinates->Init(theName, thePoints);
   if (!theMesh->HasNormals())
@@ -59,7 +66,13 @@ static void InitTriangulation(const occ::handle<Poly_Triangulation>&       theMe
   }
   for (int aNodeIndex = 1; aNodeIndex <= theMesh->NbNodes(); ++aNodeIndex)
   {
+    // the normals follow the triangles, which are reversed by a mirror and by theToReverse
     gp_Dir aNorm = theMesh->Normal(aNodeIndex);
+    aNorm.Transform(theTrsf);
+    if (theTrsf.IsNegative() != theToReverse)
+    {
+      aNorm.Reverse();
+    }
     theNormals->SetValue(aNodeIndex, 1, aNorm.X());
     theNormals->SetValue(aNodeIndex, 2, aNorm.Y());
     theNormals->SetValue(aNodeIndex, 3, aNorm.Z());
@@ -72,9 +85,42 @@ static void InitTriangulation(const occ::handle<Poly_Triangulation>&       theMe
   {
     const Poly_Triangle& aT = theMesh->Triangle(aTriangleIndex);
     theTrias->SetValue(aTriangleIndex, 1, aT.Value(1));
-    theTrias->SetValue(aTriangleIndex, 2, aT.Value(2));
-    theTrias->SetValue(aTriangleIndex, 3, aT.Value(3));
+    theTrias->SetValue(aTriangleIndex, 2, aT.Value(theToReverse ? 3 : 2));
+    theTrias->SetValue(aTriangleIndex, 3, aT.Value(theToReverse ? 2 : 3));
   }
+}
+
+//=======================================================================
+// function : IsReversedInStep
+// purpose  : returns true if the triangles of theFace must be reversed to follow the
+//            surface written in STEP. An elementary surface is written by the
+//            directions of its placement, so an indirect placement (after the
+//            location of the face) is written as a direct one with the opposite
+//            normal. The poles of the other surfaces are written as they are. A face
+//            without surface follows the orientation given by its location.
+//=======================================================================
+static bool IsReversedInStep(const TopoDS_Face& theFace, const TopLoc_Location& theMeshLoc)
+{
+  TopLoc_Location                  aSurfLoc;
+  const occ::handle<Geom_Surface>& aSurf = BRep_Tool::Surface(theFace, aSurfLoc);
+  if (aSurf.IsNull())
+  {
+    return theMeshLoc.Transformation().IsNegative();
+  }
+  occ::handle<Geom_Surface> aBasis = aSurf;
+  while (aBasis->IsKind(STANDARD_TYPE(Geom_RectangularTrimmedSurface)))
+  {
+    aBasis = occ::down_cast<Geom_RectangularTrimmedSurface>(aBasis)->BasisSurface();
+  }
+  const occ::handle<Geom_ElementarySurface> anElementary =
+    occ::down_cast<Geom_ElementarySurface>(aBasis);
+  if (anElementary.IsNull())
+  {
+    return false;
+  }
+  gp_Ax3 aPosition = anElementary->Position();
+  aPosition.Transform(aSurfLoc.Transformation());
+  return !aPosition.Direct();
 }
 
 //=================================================================================================
@@ -152,7 +198,9 @@ void TopoDSToStep_MakeTessellatedItem::Init(const TopoDS_Face&                  
                     aNormals,
                     anIndices,
                     aTrias,
-                    theLocalFactors);
+                    theLocalFactors,
+                    aLoc.Transformation(),
+                    IsReversedInStep(theFace, aLoc));
 
   const bool               aHasGeomLink = theTool.IsBound(theFace);
   StepVisual_FaceOrSurface aGeomLink;
