@@ -32,6 +32,8 @@
 #include <gp_Mat.hxx>
 #include <gp_Pnt.hxx>
 #include <Message_Msg.hxx>
+#include <Poly_PolygonOnTriangulation.hxx>
+#include <Poly_Triangulation.hxx>
 #include <ShapeCustom_DirectModification.hxx>
 #include <Standard_Type.hxx>
 #include <TopLoc_Location.hxx>
@@ -279,4 +281,106 @@ GeomAbs_Shape ShapeCustom_DirectModification::Continuity(const TopoDS_Edge& E,
                                                          const TopoDS_Face& /*NewF2*/)
 {
   return BRep_Tool::Continuity(E, F1, F2);
+}
+
+//=================================================================================================
+
+bool ShapeCustom_DirectModification::NewTriangulation(const TopoDS_Face&               theFace,
+                                                      occ::handle<Poly_Triangulation>& theTri)
+{
+  TopLoc_Location                        aTriLoc;
+  const occ::handle<Poly_Triangulation>& aTri = BRep_Tool::Triangulation(theFace, aTriLoc);
+  if (aTri.IsNull())
+  {
+    return false;
+  }
+
+  TopLoc_Location           aLoc;
+  occ::handle<Geom_Surface> aSurf = BRep_Tool::Surface(theFace, aLoc);
+  if (aSurf.IsNull())
+  {
+    return false;
+  }
+  const int aKind = IsIndirectSurface(aSurf, aLoc);
+  if (aKind == 0)
+  {
+    // the surface is kept: BRepTools_Modifier sets the mesh on the face only if the face is
+    // copied because of its edges or vertices
+    theTri = aTri;
+    return true;
+  }
+
+  // the nodes are not moved, the UV nodes follow the mirroring of the pcurves (see NewCurve2d)
+  theTri = aTri->Copy();
+  if (theTri->HasUVNodes())
+  {
+    for (int aNodeIter = 1; aNodeIter <= theTri->NbNodes(); ++aNodeIter)
+    {
+      const gp_Pnt2d aUV = theTri->UVNode(aNodeIter);
+      switch (aKind)
+      {
+        case 1: // indirect surface: mirror about the V axis
+          theTri->SetUVNode(aNodeIter, gp_Pnt2d(-aUV.X(), aUV.Y()));
+          break;
+        case 2: // negative cone: mirror about the U and V axis
+          theTri->SetUVNode(aNodeIter, gp_Pnt2d(-aUV.X(), -aUV.Y()));
+          break;
+        default: // indirect negative cone: mirror about the U axis
+          theTri->SetUVNode(aNodeIter, gp_Pnt2d(aUV.X(), -aUV.Y()));
+          break;
+      }
+    }
+  }
+
+  // a single mirroring reverses the natural normal of the surface (the face is reversed by
+  // NewSurface): the triangles and the normals are reversed to keep them oriented along it
+  if (aKind != 2)
+  {
+    for (int aTriIter = 1; aTriIter <= theTri->NbTriangles(); ++aTriIter)
+    {
+      int aN1 = 0, aN2 = 0, aN3 = 0;
+      theTri->Triangle(aTriIter).Get(aN1, aN2, aN3);
+      theTri->SetTriangle(aTriIter, Poly_Triangle(aN1, aN3, aN2));
+    }
+    if (theTri->HasNormals())
+    {
+      for (int aNodeIter = 1; aNodeIter <= theTri->NbNodes(); ++aNodeIter)
+      {
+        theTri->SetNormal(aNodeIter, theTri->Normal(aNodeIter).Reversed());
+      }
+    }
+  }
+  return true;
+}
+
+//=================================================================================================
+
+bool ShapeCustom_DirectModification::NewPolygonOnTriangulation(
+  const TopoDS_Edge&                        theEdge,
+  const TopoDS_Face&                        theFace,
+  occ::handle<Poly_PolygonOnTriangulation>& thePoly)
+{
+  // the polygons refer to the nodes of the mesh, which keep their indices in NewTriangulation
+  TopLoc_Location                        aLoc;
+  const occ::handle<Poly_Triangulation>& aTri = BRep_Tool::Triangulation(theFace, aLoc);
+  if (aTri.IsNull())
+  {
+    return false;
+  }
+  // BRepTools_Modifier puts the polygon of theEdge on the forward occurrence of the new edge.
+  // The wires of a reversed face are reversed (RevWires in NewSurface), so the polygon of the
+  // reversed occurrence of a seam goes there.
+  TopoDS_Edge               anEdge = theEdge;
+  TopLoc_Location           aSurfLoc;
+  occ::handle<Geom_Surface> aSurf = BRep_Tool::Surface(theFace, aSurfLoc);
+  if (!aSurf.IsNull())
+  {
+    const int aKind = IsIndirectSurface(aSurf, aSurfLoc);
+    if ((aKind == 1 || aKind == 3) && BRepTools::IsReallyClosed(theEdge, theFace))
+    {
+      anEdge.Reverse();
+    }
+  }
+  thePoly = BRep_Tool::PolygonOnTriangulation(anEdge, aTri, aLoc);
+  return !thePoly.IsNull();
 }

@@ -53,6 +53,22 @@ public:
                                   bool&                      RevWires,
                                   bool&                      RevFace) override;
 
+  //! Returns true if the face <F> has a triangulation <T>:
+  //! the triangulation of <F> adapted to the redressed surface
+  //! (UV nodes mirrored like the pcurves, triangles reversed
+  //! when the face is reversed), or the triangulation of <F>
+  //! itself when its surface is direct.
+  Standard_EXPORT bool NewTriangulation(const TopoDS_Face&               F,
+                                        occ::handle<Poly_Triangulation>& T) override;
+
+  //! Returns true if the edge <E> has a polygon <P> on the
+  //! triangulation of the face <F>; the indices of the nodes
+  //! are kept by NewTriangulation.
+  Standard_EXPORT bool NewPolygonOnTriangulation(
+    const TopoDS_Edge&                        E,
+    const TopoDS_Face&                        F,
+    occ::handle<Poly_PolygonOnTriangulation>& P) override;
+
   //! Returns true if the edge <E> has been
   //! modified. In this case, <C> is the new geometric
   //! support of the edge, <L> the new location, <Tol>

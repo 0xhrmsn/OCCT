@@ -6,6 +6,7 @@ set(OCCT_TKShHealing_GTests_FILES
   ShapeAnalysis_Edge_Test.cxx
   ShapeAnalysis_FreeBounds_Test.cxx
   ShapeBuild_ReShape_Test.cxx
+  ShapeCustom_DirectModification_Test.cxx
   ShapeConstruct_ProjectCurveOnSurface_Test.cxx
   ShapeFix_Face_Test.cxx
   ShapeFix_Shape_Test.cxx
