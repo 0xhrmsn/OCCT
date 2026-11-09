@@ -54,6 +54,15 @@ public:
 
   Standard_EXPORT static Standard_IStream& GetExtChar(Standard_IStream& IS, char16_t& theValue);
 
+  //! Returns true if theNbItems items of theItemSize bytes can still be read from IS, i.e.
+  //! the stream is not in a failed state, theNbItems is not negative and the items do not
+  //! exceed the rest of the stream. Used before the allocation of arrays whose size is read
+  //! from a file, which may be damaged or crafted. A stream whose size cannot be known is
+  //! not limited; the rest of the stream is not measured for less than 1 MiB.
+  Standard_EXPORT static bool IsAvailable(Standard_IStream& IS,
+                                          const int         theNbItems,
+                                          const size_t      theItemSize);
+
   //! Writes the shape to the stream in binary format BinTools_FormatVersion_CURRENT.
   //! This alias writes shape with triangulation data.
   //! @param[in] theShape        the shape to write

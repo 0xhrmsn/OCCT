@@ -12,6 +12,7 @@
 // commercial license or contractual agreement.
 
 #include <BinTools_ShapeReader.hxx>
+#include <BinTools.hxx>
 
 #include <BinTools_Curve2dSet.hxx>
 #include <BinTools_CurveSet.hxx>
@@ -496,7 +497,13 @@ occ::handle<Poly_Polygon3D> BinTools_ShapeReader::ReadPolygon3d(BinTools_IStream
   { // read from the stream
     int  aNbNodes       = theStream.ReadInteger();
     bool aHasParameters = theStream.ReadBool();
-    aResult             = new Poly_Polygon3D(aNbNodes, aHasParameters);
+    if (!BinTools::IsAvailable(theStream.Stream(),
+                               aNbNodes,
+                               (aHasParameters ? 4 : 3) * sizeof(double)))
+    {
+      throw Standard_Failure("BinTools_ShapeReader: the polygon is larger than the stream");
+    }
+    aResult = new Poly_Polygon3D(aNbNodes, aHasParameters);
     aResult->Deflection(theStream.ReadReal());
     NCollection_Array1<gp_Pnt>& aNodes = aResult->ChangeNodes();
     for (int aNodeIter = 1; aNodeIter <= aNbNodes; ++aNodeIter)
@@ -540,7 +547,11 @@ occ::handle<Poly_PolygonOnTriangulation> BinTools_ShapeReader::ReadPolygon(
   else if (theStream.LastType() == BinTools_ObjectType_PolygonOnTriangulation)
   { // read from the stream
     int aNbNodes = theStream.ReadInteger();
-    aResult      = new Poly_PolygonOnTriangulation(aNbNodes, false);
+    if (!BinTools::IsAvailable(theStream.Stream(), aNbNodes, sizeof(int)))
+    {
+      throw Standard_Failure("BinTools_ShapeReader: the polygon is larger than the stream");
+    }
+    aResult = new Poly_PolygonOnTriangulation(aNbNodes, false);
     for (int aNodeIter = 1; aNodeIter <= aNbNodes; ++aNodeIter)
     {
       aResult->SetNode(aNodeIter, theStream.ReadInteger());
@@ -587,7 +598,16 @@ occ::handle<Poly_Triangulation> BinTools_ShapeReader::ReadTriangulation(BinTools
     int  aNbTriangles = theStream.ReadInteger();
     bool aHasUV       = theStream.ReadBool();
     bool aHasNormals  = theStream.ReadBool();
-    aResult           = new Poly_Triangulation(aNbNodes, aNbTriangles, aHasUV, aHasNormals);
+    // nodes (3 reals, 2 more with UV, 3 short reals with normals), then triangles (3 integers)
+    if (!BinTools::IsAvailable(theStream.Stream(),
+                               aNbNodes,
+                               (aHasUV ? 5 : 3) * sizeof(double)
+                                 + (aHasNormals ? 3 : 0) * sizeof(float))
+        || !BinTools::IsAvailable(theStream.Stream(), aNbTriangles, 3 * sizeof(int)))
+    {
+      throw Standard_Failure("BinTools_ShapeReader: the triangulation is larger than the stream");
+    }
+    aResult = new Poly_Triangulation(aNbNodes, aNbTriangles, aHasUV, aHasNormals);
     aResult->Deflection(theStream.ReadReal());
     for (int aNodeIter = 1; aNodeIter <= aNbNodes; ++aNodeIter)
     {

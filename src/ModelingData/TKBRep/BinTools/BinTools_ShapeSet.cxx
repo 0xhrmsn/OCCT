@@ -1340,6 +1340,10 @@ void BinTools_ShapeSet::ReadPolygonOnTriangulation(Standard_IStream&            
     {
       int aNbNodes = 0;
       BinTools::GetInteger(IS, aNbNodes);
+      if (!BinTools::IsAvailable(IS, aNbNodes, sizeof(int)))
+      {
+        throw Standard_Failure("BinTools_ShapeSet: the polygon is larger than the stream");
+      }
       occ::handle<Poly_PolygonOnTriangulation> aPoly =
         new Poly_PolygonOnTriangulation(aNbNodes, false);
       for (int aNodeIter = 1; aNodeIter <= aNbNodes; ++aNodeIter)
@@ -1455,6 +1459,10 @@ void BinTools_ShapeSet::ReadPolygon3D(Standard_IStream& IS, const Message_Progre
       BinTools::GetInteger(IS, aNbNodes);
       BinTools::GetBool(IS, hasParameters);
       BinTools::GetReal(IS, aDefl);
+      if (!BinTools::IsAvailable(IS, aNbNodes, (hasParameters ? 4 : 3) * sizeof(double)))
+      {
+        throw Standard_Failure("BinTools_ShapeSet: the polygon is larger than the stream");
+      }
 
       occ::handle<Poly_Polygon3D> aPoly = new Poly_Polygon3D(aNbNodes, hasParameters);
       aPoly->Deflection(aDefl);
@@ -1603,6 +1611,15 @@ void BinTools_ShapeSet::ReadTriangulation(Standard_IStream&            IS,
         BinTools::GetBool(IS, hasNormals);
       }
       BinTools::GetReal(IS, aDefl); // deflection
+      // nodes (3 reals, 2 more with UV, 3 short reals with normals), then triangles (3 integers)
+      if (!BinTools::IsAvailable(IS,
+                                 aNbNodes,
+                                 (hasUV ? 5 : 3) * sizeof(double)
+                                   + (hasNormals ? 3 : 0) * sizeof(float))
+          || !BinTools::IsAvailable(IS, aNbTriangles, 3 * sizeof(int)))
+      {
+        throw Standard_Failure("BinTools_ShapeSet: the triangulation is larger than the stream");
+      }
       occ::handle<Poly_Triangulation> aTriangulation =
         new Poly_Triangulation(aNbNodes, aNbTriangles, hasUV, hasNormals);
       aTriangulation->Deflection(aDefl);
