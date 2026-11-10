@@ -22,6 +22,9 @@
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakeWire.hxx>
 #include <BRepGProp.hxx>
+#include <BRepGProp_Face.hxx>
+#include <BRepGProp_Vinert.hxx>
+#include <gp_Pln.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
@@ -518,4 +521,29 @@ TEST(BRepGPropTest, ManySpans_CylinderAsPrism_InertiaAndReversed)
   EXPECT_NEAR(anInertia(1, 1), aVolume * (aR * aR / 4 + aH * aH / 12), 1.0e-7 * aVolume * aR * aR);
   EXPECT_NEAR(aVol.CentreOfMass().X(), 0.0, 1.0e-7);
   EXPECT_NEAR(aVolRev.Mass(), -aVolume, 1.0e-7 * aVolume);
+}
+
+// The non-adaptive Gauss integration of the volume between the faces of a shape and a plane always
+// gave a null mass: the mass was kept only for the volume relative to a point.
+TEST(BRepGPropTest, VolumeRelativeToPlane_Gauss)
+{
+  const TopoDS_Shape aBox = BRepPrimAPI_MakeBox(gp_Pnt(1.0, 2.0, 3.0), 10.0, 20.0, 30.0).Shape();
+  const gp_Pln       aPlane(gp_Pnt(0.0, 0.0, -5.0), gp_Dir(0.0, 0.0, 1.0));
+
+  double aMass = 0.0;
+  gp_XYZ aMoment(0.0, 0.0, 0.0);
+  for (TopExp_Explorer anExp(aBox, TopAbs_FACE); anExp.More(); anExp.Next())
+  {
+    const BRepGProp_Face   aFace(TopoDS::Face(anExp.Current()));
+    const BRepGProp_Vinert aVinert(aFace, aPlane, gp::Origin());
+    aMass += aVinert.Mass();
+    aMoment += aVinert.CentreOfMass().XYZ() * aVinert.Mass();
+  }
+  EXPECT_NEAR(aMass, 6000.0, 1e-6);
+
+  // guard: the adaptive integration gives the same volume and centre
+  GProp_GProps aProps;
+  BRepGProp::VolumePropertiesGK(aBox, aProps, aPlane, 0.001, false, false, true);
+  EXPECT_NEAR(aProps.Mass(), 6000.0, 1e-6);
+  EXPECT_NEAR((aMoment / aMass - aProps.CentreOfMass().XYZ()).Modulus(), 0.0, 1e-6);
 }
