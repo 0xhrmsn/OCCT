@@ -27,11 +27,16 @@
 #include <TopOpeBRepBuild_HBuilder.hxx>
 #include <TopOpeBRepDS_HDataStructure.hxx>
 
+#include <algorithm>
+#include <new>
+
 //=================================================================================================
 
 BRepFilletAPI_MakeFillet::BRepFilletAPI_MakeFillet(const TopoDS_Shape&      S,
                                                    const ChFi3d_FilletShape FShape)
-    : myBuilder(S, FShape)
+    : myBuilder(S, FShape),
+      myInitialShape(S),
+      myInitialFShape(FShape)
 {
 }
 
@@ -44,7 +49,9 @@ void BRepFilletAPI_MakeFillet::SetParams(const double Tang,
                                          const double TolApp2d,
                                          const double Fleche)
 {
-  myBuilder.SetParams(Tang, Tesp, T2d, TApp3d, TolApp2d, Fleche);
+  apply([=](ChFi3d_FilBuilder& theBuilder) {
+    theBuilder.SetParams(Tang, Tesp, T2d, TApp3d, TolApp2d, Fleche);
+  });
 }
 
 //=================================================================================================
@@ -52,24 +59,27 @@ void BRepFilletAPI_MakeFillet::SetParams(const double Tang,
 void BRepFilletAPI_MakeFillet::SetContinuity(const GeomAbs_Shape InternalContinuity,
                                              const double        AngleTol)
 {
-  myBuilder.SetContinuity(InternalContinuity, AngleTol);
+  apply(
+    [=](ChFi3d_FilBuilder& theBuilder) { theBuilder.SetContinuity(InternalContinuity, AngleTol); });
 }
 
 //=================================================================================================
 
 void BRepFilletAPI_MakeFillet::Add(const TopoDS_Edge& E)
 {
-  myBuilder.Add(E);
+  apply([=](ChFi3d_FilBuilder& theBuilder) { theBuilder.Add(E); });
 }
 
 //=================================================================================================
 
 void BRepFilletAPI_MakeFillet::Add(const double Radius, const TopoDS_Edge& E)
 {
+  // E can be an edge of a contour of this maker, freed by the reset of the computation
+  const TopoDS_Edge anEdge = E;
   // myBuilder.Add(Radius,E);
-  myBuilder.Add(E);
+  apply([=](ChFi3d_FilBuilder& theBuilder) { theBuilder.Add(anEdge); });
   int IinC;
-  int IC = myBuilder.Contains(E, IinC);
+  int IC = myBuilder.Contains(anEdge, IinC);
   if (IC)
   {
     SetRadius(Radius, IC, IinC);
@@ -80,9 +90,11 @@ void BRepFilletAPI_MakeFillet::Add(const double Radius, const TopoDS_Edge& E)
 
 void BRepFilletAPI_MakeFillet::Add(const double R1, const double R2, const TopoDS_Edge& E)
 {
-  myBuilder.Add(E);
+  // E can be an edge of a contour of this maker, freed by the reset of the computation
+  const TopoDS_Edge anEdge = E;
+  apply([=](ChFi3d_FilBuilder& theBuilder) { theBuilder.Add(anEdge); });
   int IinC;
-  int IC = myBuilder.Contains(E, IinC);
+  int IC = myBuilder.Contains(anEdge, IinC);
   if (IC)
   {
     SetRadius(R1, R2, IC, IinC);
@@ -93,10 +105,12 @@ void BRepFilletAPI_MakeFillet::Add(const double R1, const double R2, const TopoD
 
 void BRepFilletAPI_MakeFillet::Add(const occ::handle<Law_Function>& L, const TopoDS_Edge& E)
 {
+  // E can be an edge of a contour of this maker, freed by the reset of the computation
+  const TopoDS_Edge anEdge = E;
   // myBuilder.Add(L,E);
-  myBuilder.Add(E);
+  apply([=](ChFi3d_FilBuilder& theBuilder) { theBuilder.Add(anEdge); });
   int IinC;
-  int IC = myBuilder.Contains(E, IinC);
+  int IC = myBuilder.Contains(anEdge, IinC);
   if (IC)
   {
     SetRadius(L, IC, IinC);
@@ -107,9 +121,11 @@ void BRepFilletAPI_MakeFillet::Add(const occ::handle<Law_Function>& L, const Top
 
 void BRepFilletAPI_MakeFillet::Add(const NCollection_Array1<gp_Pnt2d>& UandR, const TopoDS_Edge& E)
 {
-  myBuilder.Add(E);
+  // E can be an edge of a contour of this maker, freed by the reset of the computation
+  const TopoDS_Edge anEdge = E;
+  apply([=](ChFi3d_FilBuilder& theBuilder) { theBuilder.Add(anEdge); });
   int IinC;
-  int IC = myBuilder.Contains(E, IinC);
+  int IC = myBuilder.Contains(anEdge, IinC);
   if (IC)
   {
     SetRadius(UandR, IC, IinC);
@@ -121,8 +137,8 @@ void BRepFilletAPI_MakeFillet::Add(const NCollection_Array1<gp_Pnt2d>& UandR, co
 void BRepFilletAPI_MakeFillet::SetRadius(const double Radius, const int IC, const int IinC)
 {
   gp_XY FirstUandR(0., Radius), LastUandR(1., Radius);
-  myBuilder.SetRadius(FirstUandR, IC, IinC);
-  myBuilder.SetRadius(LastUandR, IC, IinC);
+  apply([=](ChFi3d_FilBuilder& theBuilder) { theBuilder.SetRadius(FirstUandR, IC, IinC); });
+  apply([=](ChFi3d_FilBuilder& theBuilder) { theBuilder.SetRadius(LastUandR, IC, IinC); });
 }
 
 //=================================================================================================
@@ -144,8 +160,8 @@ void BRepFilletAPI_MakeFillet::SetRadius(const double R1,
     r2 = R2;
   }
   gp_XY FirstUandR(0., r1), LastUandR(1., r2);
-  myBuilder.SetRadius(FirstUandR, IC, IinC);
-  myBuilder.SetRadius(LastUandR, IC, IinC);
+  apply([=](ChFi3d_FilBuilder& theBuilder) { theBuilder.SetRadius(FirstUandR, IC, IinC); });
+  apply([=](ChFi3d_FilBuilder& theBuilder) { theBuilder.SetRadius(LastUandR, IC, IinC); });
 }
 
 //=================================================================================================
@@ -154,7 +170,7 @@ void BRepFilletAPI_MakeFillet::SetRadius(const occ::handle<Law_Function>& L,
                                          const int                        IC,
                                          const int                        IinC)
 {
-  myBuilder.SetRadius(L, IC, IinC);
+  apply([=](ChFi3d_FilBuilder& theBuilder) { theBuilder.SetRadius(L, IC, IinC); });
 }
 
 //=================================================================================================
@@ -180,7 +196,7 @@ void BRepFilletAPI_MakeFillet::SetRadius(const NCollection_Array1<gp_Pnt2d>& Uan
       double Ucur = UandR(i).X();
       Ucur        = (Ucur - Uf) / (Ul - Uf);
       gp_XY newUandR(Ucur, UandR(i).Y());
-      myBuilder.SetRadius(newUandR, IC, IinC);
+      apply([=](ChFi3d_FilBuilder& theBuilder) { theBuilder.SetRadius(newUandR, IC, IinC); });
     }
   }
 }
@@ -203,7 +219,7 @@ double BRepFilletAPI_MakeFillet::Radius(const int IC)
 
 void BRepFilletAPI_MakeFillet::ResetContour(const int IC)
 {
-  myBuilder.ResetContour(IC);
+  apply([=](ChFi3d_FilBuilder& theBuilder) { theBuilder.ResetContour(IC); });
 }
 
 //=================================================================================================
@@ -224,7 +240,7 @@ double BRepFilletAPI_MakeFillet::Radius(const int IC, const TopoDS_Edge& E)
 
 void BRepFilletAPI_MakeFillet::SetRadius(const double Radius, const int IC, const TopoDS_Edge& E)
 {
-  myBuilder.SetRadius(Radius, IC, E);
+  apply([=](ChFi3d_FilBuilder& theBuilder) { theBuilder.SetRadius(Radius, IC, E); });
 }
 
 //=================================================================================================
@@ -247,6 +263,7 @@ void BRepFilletAPI_MakeFillet::SetLaw(const int                        IC,
                                       const TopoDS_Edge&               E,
                                       const occ::handle<Law_Function>& L)
 {
+  // the law of a computed contour (Simulate()): applied to the current computation, not replayed
   myBuilder.SetLaw(IC, E, L);
 }
 
@@ -254,14 +271,14 @@ void BRepFilletAPI_MakeFillet::SetLaw(const int                        IC,
 
 void BRepFilletAPI_MakeFillet::SetRadius(const double Radius, const int IC, const TopoDS_Vertex& V)
 {
-  myBuilder.SetRadius(Radius, IC, V);
+  apply([=](ChFi3d_FilBuilder& theBuilder) { theBuilder.SetRadius(Radius, IC, V); });
 }
 
 //=================================================================================================
 
 void BRepFilletAPI_MakeFillet::SetFilletShape(const ChFi3d_FilletShape FShape)
 {
-  myBuilder.SetFilletShape(FShape);
+  apply([=](ChFi3d_FilBuilder& theBuilder) { theBuilder.SetFilletShape(FShape); });
 }
 
 //=================================================================================================
@@ -307,7 +324,7 @@ const TopoDS_Edge& BRepFilletAPI_MakeFillet::Edge(const int I, const int J) cons
 
 void BRepFilletAPI_MakeFillet::Remove(const TopoDS_Edge& E)
 {
-  myBuilder.Remove(E);
+  apply([=](ChFi3d_FilBuilder& theBuilder) { theBuilder.Remove(E); });
 }
 
 //=================================================================================================
@@ -370,6 +387,9 @@ occ::handle<TopOpeBRepBuild_HBuilder> BRepFilletAPI_MakeFillet::Builder() const
 
 void BRepFilletAPI_MakeFillet::Build(const Message_ProgressRange& /*theRange*/)
 {
+  // a second Build() recomputes from the calls, as a new maker
+  resetIfBuilt();
+  myIsBuilt = true;
   myBuilder.Compute();
   if (myBuilder.IsDone())
   {
@@ -389,9 +409,44 @@ void BRepFilletAPI_MakeFillet::Build(const Message_ProgressRange& /*theRange*/)
 
 void BRepFilletAPI_MakeFillet::Reset()
 {
+  if (myIsBuilt || !mySimulated.empty())
+  {
+    resetIfBuilt();
+  }
+  else
+  {
+    NotDone();
+    myMap.Clear();
+  }
+}
+
+//=================================================================================================
+
+void BRepFilletAPI_MakeFillet::resetIfBuilt()
+{
+  if (!myIsBuilt && mySimulated.empty())
+  {
+    return;
+  }
+  myIsBuilt = false;
+  mySimulated.clear();
   NotDone();
-  myBuilder.Reset();
   myMap.Clear();
+  myBuilder.~ChFi3d_FilBuilder();
+  new (&myBuilder) ChFi3d_FilBuilder(myInitialShape, myInitialFShape);
+  for (const std::function<void(ChFi3d_FilBuilder&)>& aCall : myCalls)
+  {
+    aCall(myBuilder);
+  }
+}
+
+//=================================================================================================
+
+void BRepFilletAPI_MakeFillet::apply(const std::function<void(ChFi3d_FilBuilder&)>& theCall)
+{
+  resetIfBuilt();
+  theCall(myBuilder);
+  myCalls.push_back(theCall);
 }
 
 //=================================================================================================
@@ -412,7 +467,14 @@ const NCollection_List<TopoDS_Shape>& BRepFilletAPI_MakeFillet::NewFaces(const i
 
 void BRepFilletAPI_MakeFillet::Simulate(const int IC)
 {
+  // a simulation keeps the data of the other contours: a new computation only after a Build()
+  // or a simulation of the same contour
+  if (myIsBuilt || std::find(mySimulated.begin(), mySimulated.end(), IC) != mySimulated.end())
+  {
+    resetIfBuilt();
+  }
   myBuilder.Simulate(IC);
+  mySimulated.push_back(IC);
 }
 
 //=================================================================================================

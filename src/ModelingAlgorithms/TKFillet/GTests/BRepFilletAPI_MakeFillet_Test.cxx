@@ -679,6 +679,14 @@ TEST(BRepFilletAPI_MakeFilletTest, CubeFilletsTooBig_BadShapeAndRebuild)
   aMaker.Build();
   ASSERT_TRUE(aMaker.IsDone());
   EXPECT_TRUE(BRepCheck_Analyzer(aMaker.Shape()).IsValid());
+  // the rebuilt cube has its fillets: Reset() left data of the first computation and the rebuild
+  // gave the cube without any fillet
+  const double aSide   = 10.0 - 2.0 * 2.0;
+  const double aVolume = aSide * aSide * aSide + 6.0 * aSide * aSide * 2.0
+                         + 3.0 * M_PI * 4.0 * aSide + 4.0 / 3.0 * M_PI * 8.0;
+  GProp_GProps aProps;
+  BRepGProp::VolumeProperties(aMaker.Shape(), aProps);
+  EXPECT_NEAR(aProps.Mass(), aVolume, 1.0e-6 * aVolume);
 }
 
 // Chamfers use the same computation: too big ones fail, those that fit are built.
@@ -705,4 +713,146 @@ TEST(BRepFilletAPI_MakeFilletTest, CubeChamfersTooBig_ReportedAsFailure)
       EXPECT_TRUE(!aChamfer.IsDone() || BRepCheck_Analyzer(aChamfer.Shape()).IsValid()) << aDist;
     }
   }
+}
+
+namespace
+{
+double volumeOf(const TopoDS_Shape& theShape)
+{
+  GProp_GProps aProps;
+  BRepGProp::VolumeProperties(theShape, aProps);
+  return aProps.Mass();
+}
+} // namespace
+
+// A second Build() on the same maker computed on the data left by the first one: an access
+// violation (13.02, cube 10 with fillets of radius 6), or a cube without any fillet reported as
+// done (the fix tried in F1). It now recomputes from the contours, as after Reset().
+TEST(BRepFilletAPI_MakeFilletTest, SecondBuild_SameResult)
+{
+  const TopoDS_Shape             aBox    = BRepPrimAPI_MakeBox(10.0, 10.0, 10.0).Shape();
+  const std::vector<TopoDS_Edge> anEdges = cubeEdges(aBox);
+  for (const double aRadius : {1.0, 6.0})
+  {
+    BRepFilletAPI_MakeFillet aMaker(aBox);
+    for (const TopoDS_Edge& anEdge : anEdges)
+    {
+      aMaker.Add(aRadius, anEdge);
+    }
+    aMaker.Build();
+    const bool   isDone1  = aMaker.IsDone();
+    const double aVolume1 = isDone1 ? volumeOf(aMaker.Shape()) : 0.0;
+    aMaker.Build();
+    ASSERT_EQ(aMaker.IsDone(), isDone1) << aRadius;
+    if (isDone1)
+    {
+      EXPECT_NEAR(volumeOf(aMaker.Shape()), aVolume1, 1.0e-9 * aVolume1) << aRadius;
+      EXPECT_LT(aVolume1, 1000.0 - 1.0) << aRadius;
+      EXPECT_TRUE(BRepCheck_Analyzer(aMaker.Shape()).IsValid()) << aRadius;
+    }
+  }
+}
+
+// Contours added or removed after a Build() are taken into account by the next one: an added
+// contour got no radius, a removed contour could meet the stripes of the corners.
+TEST(BRepFilletAPI_MakeFilletTest, ChangeContoursAfterBuild)
+{
+  const TopoDS_Shape             aBox    = BRepPrimAPI_MakeBox(10.0, 10.0, 10.0).Shape();
+  const std::vector<TopoDS_Edge> anEdges = cubeEdges(aBox);
+  ASSERT_GE(anEdges.size(), 3u);
+
+  BRepFilletAPI_MakeFillet aReference(aBox);
+  aReference.Add(1.0, anEdges[0]);
+  aReference.Add(1.0, anEdges[1]);
+  aReference.Build();
+  ASSERT_TRUE(aReference.IsDone());
+
+  // add after a Build
+  BRepFilletAPI_MakeFillet anAdded(aBox);
+  anAdded.Add(1.0, anEdges[0]);
+  anAdded.Build();
+  ASSERT_TRUE(anAdded.IsDone());
+  anAdded.Add(1.0, anEdges[1]);
+  anAdded.Build();
+  ASSERT_TRUE(anAdded.IsDone());
+  EXPECT_NEAR(volumeOf(anAdded.Shape()), volumeOf(aReference.Shape()), 1.0e-9 * 1000.0);
+
+  // remove after a Build
+  BRepFilletAPI_MakeFillet aRemoved(aBox);
+  for (int i = 0; i < 3; ++i)
+  {
+    aRemoved.Add(1.0, anEdges[i]);
+  }
+  aRemoved.Build();
+  ASSERT_TRUE(aRemoved.IsDone());
+  aRemoved.Remove(anEdges[2]);
+  aRemoved.Build();
+  ASSERT_TRUE(aRemoved.IsDone());
+  EXPECT_NEAR(volumeOf(aRemoved.Shape()), volumeOf(aReference.Shape()), 1.0e-9 * 1000.0);
+}
+
+// Chamfers: the same second Build().
+TEST(BRepFilletAPI_MakeFilletTest, SecondChamferBuild_SameResult)
+{
+  const TopoDS_Shape             aBox    = BRepPrimAPI_MakeBox(10.0, 10.0, 10.0).Shape();
+  const std::vector<TopoDS_Edge> anEdges = cubeEdges(aBox);
+  BRepFilletAPI_MakeChamfer      aMaker(aBox);
+  for (const TopoDS_Edge& anEdge : anEdges)
+  {
+    aMaker.Add(1.0, anEdge);
+  }
+  aMaker.Build();
+  ASSERT_TRUE(aMaker.IsDone());
+  const double aVolume = volumeOf(aMaker.Shape());
+  aMaker.Build();
+  ASSERT_TRUE(aMaker.IsDone());
+  EXPECT_NEAR(volumeOf(aMaker.Shape()), aVolume, 1.0e-9 * aVolume);
+}
+
+// Simulating a contour keeps the simulation of the others; an edge taken from the maker can be
+// given back to it after a Build(); a Reset() before any Build() changes nothing.
+TEST(BRepFilletAPI_MakeFilletTest, ReuseAfterSimulateAndBuild)
+{
+  const TopoDS_Shape             aBox    = BRepPrimAPI_MakeBox(10.0, 10.0, 10.0).Shape();
+  const std::vector<TopoDS_Edge> anEdges = cubeEdges(aBox);
+
+  BRepFilletAPI_MakeFillet aSimulated(aBox);
+  aSimulated.Add(1.0, anEdges[0]);
+  aSimulated.Add(1.0, anEdges[1]);
+  aSimulated.Simulate(1);
+  const int aNbSurf1 = aSimulated.NbSurf(1);
+  aSimulated.Simulate(2);
+  EXPECT_EQ(aSimulated.NbSurf(1), aNbSurf1);
+  EXPECT_GT(aSimulated.NbSurf(2), 0);
+
+  BRepFilletAPI_MakeFillet aReference(aBox);
+  aReference.Add(2.0, anEdges[0]);
+  aReference.Build();
+  ASSERT_TRUE(aReference.IsDone());
+
+  BRepFilletAPI_MakeFillet aMaker(aBox);
+  aMaker.Reset();
+  aMaker.Add(1.0, anEdges[0]);
+  aMaker.Build();
+  ASSERT_TRUE(aMaker.IsDone());
+  // the radius of the contour changed through Add() with its own edge
+  aMaker.Add(2.0, aMaker.Edge(1, 1));
+  aMaker.Build();
+  ASSERT_TRUE(aMaker.IsDone());
+  EXPECT_NEAR(volumeOf(aMaker.Shape()), volumeOf(aReference.Shape()), 1.0e-9 * 1000.0);
+
+  // chamfer: add a contour after a Build
+  BRepFilletAPI_MakeChamfer aChamferRef(aBox);
+  aChamferRef.Add(1.0, anEdges[0]);
+  aChamferRef.Add(1.0, anEdges[1]);
+  aChamferRef.Build();
+  ASSERT_TRUE(aChamferRef.IsDone());
+  BRepFilletAPI_MakeChamfer aChamfer(aBox);
+  aChamfer.Add(1.0, anEdges[0]);
+  aChamfer.Build();
+  ASSERT_TRUE(aChamfer.IsDone());
+  aChamfer.Add(1.0, anEdges[1]);
+  aChamfer.Build();
+  ASSERT_TRUE(aChamfer.IsDone());
+  EXPECT_NEAR(volumeOf(aChamfer.Shape()), volumeOf(aChamferRef.Shape()), 1.0e-9 * 1000.0);
 }

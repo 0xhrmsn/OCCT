@@ -36,6 +36,9 @@
 #include <ChFiDS_CircSection.hxx>
 #include <NCollection_HArray1.hxx>
 #include <ChFiDS_ErrorStatus.hxx>
+
+#include <functional>
+#include <vector>
 class TopoDS_Shape;
 class TopoDS_Edge;
 class Law_Function;
@@ -380,8 +383,25 @@ public:
   Standard_EXPORT ChFiDS_ErrorStatus StripeStatus(const int IC) const;
 
 private:
+  //! Replays the changes made on this maker on a new computation, when Build() or Simulate()
+  //! has run. The references given by the maker before (edges of contours, new faces,
+  //! Builder()) are no longer valid.
+  //! ChFi3d_Builder::Reset() left data of the computation in the spines: a second Build(), or a
+  //! Build() after Reset() or after a change of the contours, crashed or gave the input without
+  //! any fillet. The new computation is the one of a new maker given the same calls.
+  Standard_EXPORT void resetIfBuilt();
+
+  //! Applies theCall to the computation and records it for resetIfBuilt().
+  Standard_EXPORT void apply(const std::function<void(ChFi3d_FilBuilder&)>& theCall);
+
+private:
   ChFi3d_FilBuilder                                      myBuilder;
   NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> myMap;
+  TopoDS_Shape                                           myInitialShape;
+  ChFi3d_FilletShape                                     myInitialFShape;
+  std::vector<std::function<void(ChFi3d_FilBuilder&)>>   myCalls;
+  std::vector<int> mySimulated; //!< contours simulated since the last reset
+  bool             myIsBuilt = false;
 };
 
 #endif // _BRepFilletAPI_MakeFillet_HeaderFile

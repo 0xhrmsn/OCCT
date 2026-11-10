@@ -24,10 +24,14 @@
 #include <TopOpeBRepBuild_HBuilder.hxx>
 #include <TopOpeBRepDS_HDataStructure.hxx>
 
+#include <algorithm>
+#include <new>
+
 //=================================================================================================
 
 BRepFilletAPI_MakeChamfer::BRepFilletAPI_MakeChamfer(const TopoDS_Shape& S)
-    : myBuilder(S)
+    : myBuilder(S),
+      myInitialShape(S)
 {
 }
 
@@ -35,21 +39,21 @@ BRepFilletAPI_MakeChamfer::BRepFilletAPI_MakeChamfer(const TopoDS_Shape& S)
 
 void BRepFilletAPI_MakeChamfer::Add(const TopoDS_Edge& E)
 {
-  myBuilder.Add(E);
+  apply([=](ChFi3d_ChBuilder& theBuilder) { theBuilder.Add(E); });
 }
 
 //=================================================================================================
 
 void BRepFilletAPI_MakeChamfer::Add(const double Dis, const TopoDS_Edge& E)
 {
-  myBuilder.Add(Dis, E);
+  apply([=](ChFi3d_ChBuilder& theBuilder) { theBuilder.Add(Dis, E); });
 }
 
 //=================================================================================================
 
 void BRepFilletAPI_MakeChamfer::SetDist(const double Dis, const int IC, const TopoDS_Face& F)
 {
-  myBuilder.SetDist(Dis, IC, F);
+  apply([=](ChFi3d_ChBuilder& theBuilder) { theBuilder.SetDist(Dis, IC, F); });
 }
 
 //=================================================================================================
@@ -66,7 +70,7 @@ void BRepFilletAPI_MakeChamfer::Add(const double       Dis1,
                                     const TopoDS_Edge& E,
                                     const TopoDS_Face& F)
 {
-  myBuilder.Add(Dis1, Dis2, E, F);
+  apply([=](ChFi3d_ChBuilder& theBuilder) { theBuilder.Add(Dis1, Dis2, E, F); });
 }
 
 //=================================================================================================
@@ -76,7 +80,7 @@ void BRepFilletAPI_MakeChamfer::SetDists(const double       Dis1,
                                          const int          IC,
                                          const TopoDS_Face& F)
 {
-  myBuilder.SetDists(Dis1, Dis2, IC, F);
+  apply([=](ChFi3d_ChBuilder& theBuilder) { theBuilder.SetDists(Dis1, Dis2, IC, F); });
 }
 
 //=================================================================================================
@@ -96,7 +100,7 @@ void BRepFilletAPI_MakeChamfer::AddDA(const double       Dis,
                                       const TopoDS_Edge& E,
                                       const TopoDS_Face& F)
 {
-  myBuilder.AddDA(Dis, Angle, E, F);
+  apply([=](ChFi3d_ChBuilder& theBuilder) { theBuilder.AddDA(Dis, Angle, E, F); });
 }
 
 //=================================================================================================
@@ -106,7 +110,7 @@ void BRepFilletAPI_MakeChamfer::SetDistAngle(const double       Dis,
                                              const int          IC,
                                              const TopoDS_Face& F)
 {
-  myBuilder.SetDistAngle(Dis, Angle, IC, F);
+  apply([=](ChFi3d_ChBuilder& theBuilder) { theBuilder.SetDistAngle(Dis, Angle, IC, F); });
 }
 
 //=================================================================================================
@@ -120,7 +124,7 @@ void BRepFilletAPI_MakeChamfer::GetDistAngle(const int IC, double& Dis, double& 
 
 void BRepFilletAPI_MakeChamfer::SetMode(const ChFiDS_ChamfMode theMode)
 {
-  myBuilder.SetMode(theMode);
+  apply([=](ChFi3d_ChBuilder& theBuilder) { theBuilder.SetMode(theMode); });
 }
 
 //=================================================================================================
@@ -172,7 +176,7 @@ bool BRepFilletAPI_MakeChamfer::IsDistanceAngle(const int IC) const
 
 void BRepFilletAPI_MakeChamfer::ResetContour(const int IC)
 {
-  myBuilder.ResetContour(IC);
+  apply([=](ChFi3d_ChBuilder& theBuilder) { theBuilder.ResetContour(IC); });
 }
 
 //=================================================================================================
@@ -211,7 +215,7 @@ const TopoDS_Edge& BRepFilletAPI_MakeChamfer::Edge(const int I, const int J) con
 
 void BRepFilletAPI_MakeChamfer::Remove(const TopoDS_Edge& E)
 {
-  myBuilder.Remove(E);
+  apply([=](ChFi3d_ChBuilder& theBuilder) { theBuilder.Remove(E); });
 }
 
 //=================================================================================================
@@ -274,6 +278,9 @@ occ::handle<TopOpeBRepBuild_HBuilder> BRepFilletAPI_MakeChamfer::Builder() const
 
 void BRepFilletAPI_MakeChamfer::Build(const Message_ProgressRange& /*theRange*/)
 {
+  // a second Build() recomputes from the calls, as a new maker
+  resetIfBuilt();
+  myIsBuilt = true;
   myBuilder.Compute();
   if (myBuilder.IsDone())
   {
@@ -293,9 +300,44 @@ void BRepFilletAPI_MakeChamfer::Build(const Message_ProgressRange& /*theRange*/)
 
 void BRepFilletAPI_MakeChamfer::Reset()
 {
+  if (myIsBuilt || !mySimulated.empty())
+  {
+    resetIfBuilt();
+  }
+  else
+  {
+    NotDone();
+    myMap.Clear();
+  }
+}
+
+//=================================================================================================
+
+void BRepFilletAPI_MakeChamfer::resetIfBuilt()
+{
+  if (!myIsBuilt && mySimulated.empty())
+  {
+    return;
+  }
+  myIsBuilt = false;
+  mySimulated.clear();
   NotDone();
-  myBuilder.Reset();
   myMap.Clear();
+  myBuilder.~ChFi3d_ChBuilder();
+  new (&myBuilder) ChFi3d_ChBuilder(myInitialShape);
+  for (const std::function<void(ChFi3d_ChBuilder&)>& aCall : myCalls)
+  {
+    aCall(myBuilder);
+  }
+}
+
+//=================================================================================================
+
+void BRepFilletAPI_MakeChamfer::apply(const std::function<void(ChFi3d_ChBuilder&)>& theCall)
+{
+  resetIfBuilt();
+  theCall(myBuilder);
+  myCalls.push_back(theCall);
 }
 
 //=================================================================================================
@@ -351,7 +393,14 @@ bool BRepFilletAPI_MakeChamfer::IsDeleted(const TopoDS_Shape& F)
 
 void BRepFilletAPI_MakeChamfer::Simulate(const int IC)
 {
+  // a simulation keeps the data of the other contours: a new computation only after a Build()
+  // or a simulation of the same contour
+  if (myIsBuilt || std::find(mySimulated.begin(), mySimulated.end(), IC) != mySimulated.end())
+  {
+    resetIfBuilt();
+  }
   myBuilder.Simulate(IC);
+  mySimulated.push_back(IC);
 }
 
 //=================================================================================================
