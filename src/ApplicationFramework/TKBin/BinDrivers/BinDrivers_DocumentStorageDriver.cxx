@@ -104,6 +104,9 @@ void BinDrivers_DocumentStorageDriver::EnableQuickPartWriting(
     throw Standard_NotImplemented("Internal Error - TNaming_NamedShape is not found!");
   }
 
+  // called once at the start of a document: the shapes kept from a previous document (a writing
+  // stopped by a user break or an exception) must not be referred to by this one
+  aShapesDriver->Clear();
   aShapesDriver->EnableQuickPart(theValue);
 }
 

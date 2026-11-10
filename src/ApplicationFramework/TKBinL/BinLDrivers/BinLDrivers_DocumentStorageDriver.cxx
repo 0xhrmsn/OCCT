@@ -37,6 +37,8 @@
 #include <TDocStd_Document.hxx>
 #include <Message_ProgressScope.hxx>
 
+#include <sstream>
+
 IMPLEMENT_STANDARD_RTTIEXT(BinLDrivers_DocumentStorageDriver, PCDM_StorageDriver)
 
 #define SHAPESECTION_POS (const char*)"SHAPE_SECTION_POS:"
@@ -56,6 +58,15 @@ void BinLDrivers_DocumentStorageDriver::Write(const occ::handle<CDM_Document>&  
   SetStoreStatus(PCDM_SS_OK);
 
   myFileName = theFileName;
+
+  const occ::handle<TDocStd_Document> aDoc = occ::down_cast<TDocStd_Document>(theDocument);
+  if (!aDoc.IsNull() && aDoc->StorageFormatVersion() < TDocStd_FormatVersion_VERSION_3)
+  {
+    // rejected by the stream writer below, before the file is opened: an existing file is kept
+    std::ostringstream aNoFile;
+    Write(theDocument, aNoFile, theRange);
+    return;
+  }
 
   const occ::handle<OSD_FileSystem>& aFileSystem = OSD_FileSystem::DefaultFileSystem();
   std::shared_ptr<std::ostream>      aFileStream =
@@ -87,6 +98,17 @@ void BinLDrivers_DocumentStorageDriver::Write(const occ::handle<CDM_Document>& t
   {
     SetIsError(true);
     SetStoreStatus(PCDM_SS_Doc_IsNull);
+  }
+  else if (aDoc->StorageFormatVersion() < TDocStd_FormatVersion_VERSION_3)
+  {
+    // The layout of the versions below 3 (shape section position instead of a table of sections)
+    // is not written: the document was written in the layout of the next versions with the number
+    // of an older one, and could not be read.
+    myMsgDriver->Send("BinLDrivers_DocumentStorageDriver: a document of a format version below 3 "
+                      "cannot be written",
+                      Message_Fail);
+    SetIsError(true);
+    SetStoreStatus(PCDM_SS_Failure);
   }
   else
   {

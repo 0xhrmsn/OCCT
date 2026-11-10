@@ -202,6 +202,11 @@ std::string deepDocument(const occ::handle<TDocStd_Application>& theApp,
 // the deepest one, a shape near the nesting limit of the shape reader with a long location.
 TEST(BinDrivers_DocumentRetrievalDriverTest, Read_DeepestAcceptedDocument)
 {
+#if defined(__SANITIZE_ADDRESS__)
+  // the limits are set for the frames of a release build: the frames of AddressSanitizer (red
+  // zones) are much larger and the deepest accepted document does not fit in 1 MiB
+  GTEST_SKIP() << "stack budget of a release build";
+#endif
   occ::handle<TDocStd_Application> anApp = new TDocStd_Application();
   BinDrivers::DefineFormat(anApp);
   const std::string aData = deepDocument(anApp, nestedShape(190, 900), 296);
@@ -224,4 +229,62 @@ TEST(BinDrivers_DocumentRetrievalDriverTest, Read_DeepestAcceptedDocument)
   ASSERT_TRUE(anExp.More());
   EXPECT_NEAR(anExp.Current().Location().Transformation().TranslationPart().Z(), 0.9, 1e-9);
   anApp->Close(aDoc);
+}
+
+// The layout of the format version 2 is not written: SaveAs() reported success and wrote a
+// document that could not be read (PCDM_RS_FormatFailure).
+TEST(BinDrivers_DocumentRetrievalDriverTest, SaveVersion2_Rejected)
+{
+  occ::handle<TDocStd_Application> anApp = new TDocStd_Application();
+  BinDrivers::DefineFormat(anApp);
+  occ::handle<TDocStd_Document> aDoc;
+  anApp->NewDocument("BinOcaf", aDoc);
+  TNaming_Builder aBuilder(aDoc->Main().FindChild(1, true));
+  aBuilder.Generated(BRepPrimAPI_MakeBox(1.0, 2.0, 3.0).Shape());
+  aDoc->ChangeStorageFormatVersion(TDocStd_FormatVersion_VERSION_2);
+  std::ostringstream anOut;
+  EXPECT_NE(anApp->SaveAs(aDoc, anOut), PCDM_SS_OK);
+  anApp->Close(aDoc);
+}
+
+// The shape set of the named shape driver is kept between documents. A document of version 12
+// (shapes written in the attributes) saved after one of an older version (shape section) was
+// written with the set of the older version and could not be read (PCDM_RS_DriverFailure).
+TEST(BinDrivers_DocumentRetrievalDriverTest, SaveVersionsInTurn_AllReadable)
+{
+  occ::handle<TDocStd_Application> anApp = new TDocStd_Application();
+  BinDrivers::DefineFormat(anApp);
+  const TDocStd_FormatVersion aVersions[] = {TDocStd_FormatVersion_VERSION_11,
+                                             TDocStd_FormatVersion_VERSION_12,
+                                             TDocStd_FormatVersion_VERSION_11,
+                                             TDocStd_FormatVersion_VERSION_12};
+  std::string                 aData[4];
+  for (int i = 0; i < 4; ++i)
+  {
+    occ::handle<TDocStd_Document> aDoc;
+    anApp->NewDocument("BinOcaf", aDoc);
+    TNaming_Builder aBuilder(aDoc->Main().FindChild(1, true));
+    aBuilder.Generated(BRepPrimAPI_MakeBox(1.0 + i, 2.0, 3.0).Shape());
+    aDoc->ChangeStorageFormatVersion(aVersions[i]);
+    std::ostringstream anOut;
+    EXPECT_EQ(anApp->SaveAs(aDoc, anOut), PCDM_SS_OK) << i;
+    anApp->Close(aDoc);
+    aData[i] = anOut.str();
+  }
+  for (int i = 0; i < 4; ++i)
+  {
+    occ::handle<TDocStd_Document> aDoc;
+    std::istringstream            anIn(aData[i]);
+    ASSERT_EQ(anApp->Open(anIn, aDoc), PCDM_RS_OK) << i;
+    occ::handle<TNaming_NamedShape> aNamed;
+    ASSERT_TRUE(aDoc->Main().FindChild(1, false).FindAttribute(TNaming_NamedShape::GetID(), aNamed))
+      << i;
+    int aNbFaces = 0;
+    for (TopExp_Explorer anExp(aNamed->Get(), TopAbs_FACE); anExp.More(); anExp.Next())
+    {
+      ++aNbFaces;
+    }
+    EXPECT_EQ(aNbFaces, 6) << i;
+    anApp->Close(aDoc);
+  }
 }

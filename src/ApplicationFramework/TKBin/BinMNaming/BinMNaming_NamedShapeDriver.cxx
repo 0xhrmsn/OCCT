@@ -416,6 +416,20 @@ void BinMNaming_NamedShapeDriver::ReadShapeSection(Standard_IStream&            
 
 BinTools_ShapeSetBase* BinMNaming_NamedShapeDriver::ShapeSet(const bool theReading)
 {
+  // The set is kept between documents: a set of another kind than the current mode (left by a
+  // document of another format version) wrote a document that could not be read, and the
+  // static casts to BinTools_ShapeSet in Paste() were done on a reader or a writer.
+  if (myShapeSet)
+  {
+    const bool isRightKind =
+      !myIsQuickPart ? dynamic_cast<BinTools_ShapeSet*>(myShapeSet) != nullptr
+      : theReading   ? dynamic_cast<BinTools_ShapeReader*>(myShapeSet) != nullptr
+                     : dynamic_cast<BinTools_ShapeWriter*>(myShapeSet) != nullptr;
+    if (!isRightKind)
+    {
+      Clear();
+    }
+  }
   if (!myShapeSet)
   {
     if (myIsQuickPart)
