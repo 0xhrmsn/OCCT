@@ -16,7 +16,9 @@
 
 #include <NCollection_BaseAllocator.hxx>
 #include <Standard.hxx>
+#include <Standard_OutOfMemory.hxx>
 
+#include <limits>
 #include <memory>
 #include <type_traits>
 
@@ -118,11 +120,21 @@ public:
   const occ::handle<NCollection_BaseAllocator>& Allocator() const noexcept { return myAllocator; }
 
   //! Allocates memory for theSize objects.
+  //! Throws Standard_OutOfMemory when the size overflows or the memory is not allocated (see
+  //! NCollection_Allocator::allocate()).
   pointer allocate(size_type theSize, const void* = nullptr)
   {
-    return static_cast<pointer>(myAllocator.IsNull()
-                                  ? Standard::AllocateOptimal(theSize * sizeof(ItemType))
-                                  : myAllocator->AllocateOptimal(theSize * sizeof(ItemType)));
+    if (theSize > std::numeric_limits<size_type>::max() / sizeof(ItemType))
+    {
+      throw Standard_OutOfMemory("NCollection_OccAllocator::allocate(): size overflow");
+    }
+    void* aPnt = myAllocator.IsNull() ? Standard::AllocateOptimal(theSize * sizeof(ItemType))
+                                      : myAllocator->AllocateOptimal(theSize * sizeof(ItemType));
+    if (aPnt == nullptr && theSize != 0)
+    {
+      throw Standard_OutOfMemory("NCollection_OccAllocator::allocate(): allocation failed");
+    }
+    return static_cast<pointer>(aPnt);
   }
 
   //! Template version of function Free(), nullifies the argument pointer

@@ -497,6 +497,10 @@ protected:
       {
         myAllocator.deallocate(aPrevPtr, mySize);
       }
+      // an empty array if the allocation throws: the previous block is already freed
+      myPointer = nullptr;
+      mySize    = 0;
+      myIsOwner = false;
       myPointer = myAllocator.allocate(theNewSize);
       construct(0, theNewSize);
     }

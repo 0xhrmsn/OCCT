@@ -17,6 +17,9 @@
 #include <Standard.hxx>
 #include <NCollection_BaseAllocator.hxx>
 
+#include <Standard_OutOfMemory.hxx>
+
+#include <limits>
 #include <type_traits>
 #include <utility>
 
@@ -86,9 +89,21 @@ public:
   const_pointer address(const_reference theItem) const noexcept { return &theItem; }
 
   //! Allocates memory for theSize objects.
+  //! Throws Standard_OutOfMemory when the size overflows or the memory is not allocated, as the
+  //! allocators of the standard library: the size can come from a file (a number of items), and
+  //! the callers construct the items in the memory returned.
   pointer allocate(const size_type theSize, const void* /*hint*/ = nullptr) const
   {
-    return static_cast<pointer>(Standard::AllocateOptimal(theSize * sizeof(ItemType)));
+    if (theSize > std::numeric_limits<size_type>::max() / sizeof(ItemType))
+    {
+      throw Standard_OutOfMemory("NCollection_Allocator::allocate(): size overflow");
+    }
+    void* aPnt = Standard::AllocateOptimal(theSize * sizeof(ItemType));
+    if (aPnt == nullptr && theSize != 0)
+    {
+      throw Standard_OutOfMemory("NCollection_Allocator::allocate(): allocation failed");
+    }
+    return static_cast<pointer>(aPnt);
   }
 
   //! Frees previously allocated memory.
@@ -101,6 +116,10 @@ public:
   //! Reallocates memory for theSize objects.
   pointer reallocate(pointer thePnt, const size_type theSize) const
   {
+    if (theSize > std::numeric_limits<size_type>::max() / sizeof(ItemType))
+    {
+      throw Standard_OutOfMemory("NCollection_Allocator::reallocate(): size overflow");
+    }
     return static_cast<pointer>(Standard::Reallocate(thePnt, theSize * sizeof(ItemType)));
   }
 

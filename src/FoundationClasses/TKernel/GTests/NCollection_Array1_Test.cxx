@@ -13,6 +13,8 @@
 
 #include <NCollection_Array1.hxx>
 #include <Standard_Integer.hxx>
+#include <Standard_OutOfMemory.hxx>
+#include <Standard_Transient.hxx>
 
 #include <gtest/gtest.h>
 #include <algorithm>
@@ -822,4 +824,13 @@ TEST(NCollection_Array1Test, SizeConstructor_MoveSemantics)
   EXPECT_EQ(3, anDst.At(2));
   EXPECT_EQ(0u, anSrc.Size());
   EXPECT_TRUE(anSrc.IsEmpty());
+}
+
+// Bounds read from a file can give a negative number of items: the size overflowed and the items
+// were constructed in a null or too small block (access violation). The allocation throws.
+TEST(NCollection_Array1Test, NegativeLength_ThrowsOutOfMemory)
+{
+  EXPECT_THROW(NCollection_Array1<double>(1, -5), Standard_OutOfMemory);
+  EXPECT_THROW(NCollection_Array1<occ::handle<Standard_Transient>>(1, -2000000000),
+               Standard_OutOfMemory);
 }
