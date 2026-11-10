@@ -639,6 +639,12 @@ void BRepTools::Read(TopoDS_Shape&                Sh,
 {
   BRepTools_ShapeSet SS(B);
   SS.Read(S, theProgress);
+  if (theProgress.UserBreak())
+  {
+    // the tables are incomplete: the shape would refer to missing entries
+    Sh.Nullify();
+    return;
+  }
   SS.Read(Sh, S);
 }
 
@@ -683,7 +689,8 @@ bool BRepTools::Write(const TopoDS_Shape&          theShape,
   isGood = aStream->good() && isGood && !errno;
   aStream.reset();
 
-  return isGood;
+  // a cancelled writing leaves a truncated file
+  return isGood && !theProgress.UserBreak();
 }
 
 //=================================================================================================
@@ -701,6 +708,12 @@ bool BRepTools::Read(TopoDS_Shape&                Sh,
   }
   BRepTools_ShapeSet SS(B);
   SS.Read(*aStream, theProgress);
+  if (theProgress.UserBreak())
+  {
+    // the tables are incomplete: the shape would refer to missing entries
+    Sh.Nullify();
+    return false;
+  }
   if (aStream->fail() || !SS.NbShapes())
   {
     return false;

@@ -205,6 +205,12 @@ void BinTools::Read(TopoDS_Shape&                theShape,
   BinTools_ShapeSet aShapeSet;
   aShapeSet.SetWithTriangles(true);
   aShapeSet.Read(theStream, theRange);
+  if (theRange.UserBreak())
+  {
+    // the tables are incomplete: the shape would refer to missing entries
+    theShape.Nullify();
+    return;
+  }
   aShapeSet.ReadSubs(theShape, theStream, aShapeSet.NbShapes());
 }
 
@@ -228,7 +234,8 @@ bool BinTools::Write(const TopoDS_Shape&          theShape,
 
   Write(theShape, *aStream, theWithTriangles, theWithNormals, theVersion, theRange);
   aStream->flush();
-  return aStream->good();
+  // a cancelled writing leaves a truncated file
+  return aStream->good() && !theRange.UserBreak();
 }
 
 //=================================================================================================
@@ -246,5 +253,11 @@ bool BinTools::Read(TopoDS_Shape&                theShape,
   }
 
   Read(theShape, *aStream, theRange);
+  if (theRange.UserBreak())
+  {
+    // a cancelled reading leaves an incomplete shape
+    theShape.Nullify();
+    return false;
+  }
   return aStream->good();
 }

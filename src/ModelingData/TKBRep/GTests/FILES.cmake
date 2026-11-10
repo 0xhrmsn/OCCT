@@ -58,6 +58,7 @@ set(OCCT_TKBRep_GTests_FILES
   BRepTools_ReShape_Test.cxx
   BRepTools_Test.cxx
   BinTools_Test.cxx
+  BRepTools_UserBreak_Test.cxx
   TopExp_Test.cxx
   TopoDS_Builder_Test.cxx
   TopoDS_Edge_Test.cxx
