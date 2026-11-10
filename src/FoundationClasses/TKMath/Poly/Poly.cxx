@@ -351,7 +351,7 @@ occ::handle<Poly_Triangulation> Poly::ReadTriangulation(Standard_IStream& IS)
   // Read a triangulation
 
   char line[100];
-  IS >> line;
+  IS >> std::setw(sizeof(line)) >> line;
   if (strcmp(line, "Poly_Triangulation"))
   {
 #ifdef OCCT_DEBUG
@@ -422,7 +422,7 @@ occ::handle<Poly_Polygon3D> Poly::ReadPolygon3D(Standard_IStream& IS)
   // Read a 3d polygon
 
   char line[100];
-  IS >> line;
+  IS >> std::setw(sizeof(line)) >> line;
   if (strcmp(line, "Poly_Polygon3D"))
   {
 #ifdef OCCT_DEBUG
@@ -482,7 +482,7 @@ occ::handle<Poly_Polygon2D> Poly::ReadPolygon2D(Standard_IStream& IS)
   // Read a 2d polygon
 
   char line[100];
-  IS >> line;
+  IS >> std::setw(sizeof(line)) >> line;
   if (strcmp(line, "Poly_Polygon2D"))
   {
 #ifdef OCCT_DEBUG

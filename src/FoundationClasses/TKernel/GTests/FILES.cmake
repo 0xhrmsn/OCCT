@@ -3,6 +3,7 @@ set(OCCT_TKernel_GTests_FILES_LOCATION "${CMAKE_CURRENT_LIST_DIR}")
 
 set(OCCT_TKernel_GTests_FILES
   FSD_BinaryFile_Test.cxx
+  FSD_File_Test.cxx
   Handle_Advanced_Test.cxx
   Handle_Operations_Test.cxx
   Message_Messenger_Test.cxx

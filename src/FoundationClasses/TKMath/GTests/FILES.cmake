@@ -128,4 +128,5 @@ set(OCCT_TKMath_GTests_FILES
   PLib_JacobiPolynomial_Test.cxx
   PLib_HermitJacobi_Test.cxx
   Poly_Connect_Test.cxx
+  Poly_Read_Test.cxx
 )

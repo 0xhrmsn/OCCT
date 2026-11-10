@@ -24,11 +24,28 @@
 #include <TCollection_AsciiString.hxx>
 #include <TCollection_ExtendedString.hxx>
 
+#include <cctype>
+#include <iomanip>
+
 namespace
 {
 static const char* const MAGICNUMBER                 = "FSDFILE";
 static const char* const ENDOFNORMALEXTENDEDSECTION  = "BEGIN_REF_SECTION";
 static const int         SIZEOFNORMALEXTENDEDSECTION = 16;
+
+//! Reads a word into theBuffer. A word that does not fit the buffer is a format error: it was
+//! written past the end of the buffer.
+template <size_t N>
+bool readWord(Standard_IStream& theStream, char (&theBuffer)[N])
+{
+  theBuffer[0] = '\0';
+  if (!(theStream >> std::setw(N) >> theBuffer))
+  {
+    return false;
+  }
+  const int aNext = theStream.peek();
+  return aNext == std::char_traits<char>::eof() || std::isspace(aNext) != 0;
+}
 } // namespace
 
 #define USEOSDREAL 1
@@ -588,9 +605,7 @@ Storage_BaseDriver& FSD_File::GetReal(double& aValue)
 {
 #ifdef USEOSDREAL
   char realbuffer[100];
-
-  realbuffer[0] = '\0';
-  if (!(myStream >> realbuffer))
+  if (!readWord(myStream, realbuffer))
   {
     throw Storage_StreamTypeMismatchError();
   }
@@ -615,9 +630,7 @@ Storage_BaseDriver& FSD_File::GetShortReal(float& aValue)
 #ifdef USEOSDREAL
   char   realbuffer[100];
   double r = 0.0;
-
-  realbuffer[0] = '\0';
-  if (!(myStream >> realbuffer))
+  if (!readWord(myStream, realbuffer))
   {
     throw Storage_StreamTypeMismatchError();
   }
