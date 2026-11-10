@@ -633,7 +633,7 @@ void BinTools_Curve2dSet::Read(Standard_IStream& IS, const Message_ProgressRange
 {
   char buffer[255];
 
-  IS >> buffer;
+  IS >> std::setw(sizeof(buffer)) >> buffer;
   if (IS.fail() || strcmp(buffer, "Curve2ds"))
   {
     Standard_SStream aMsg;

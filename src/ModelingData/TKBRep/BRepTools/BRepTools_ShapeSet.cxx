@@ -797,7 +797,7 @@ void BRepTools_ShapeSet::WriteGeometry(const TopoDS_Shape& S, Standard_OStream& 
 static GeomAbs_Shape ReadRegularity(Standard_IStream& IS)
 {
   char buffer[255];
-  IS >> buffer;
+  IS >> std::setw(sizeof(buffer)) >> buffer;
   switch (buffer[0])
   {
 
@@ -1400,7 +1400,7 @@ void BRepTools_ShapeSet::ReadPolygonOnTriangulation(Standard_IStream&           
                                                     const Message_ProgressRange& theProgress)
 {
   char buffer[255];
-  IS >> buffer;
+  IS >> std::setw(sizeof(buffer)) >> buffer;
   if (strstr(buffer, "PolygonOnTriangulations") == nullptr)
   {
     return;
@@ -1422,7 +1422,7 @@ void BRepTools_ShapeSet::ReadPolygonOnTriangulation(Standard_IStream&           
       IS >> val;
       Nodes(j) = val;
     }
-    IS >> buffer;
+    IS >> std::setw(sizeof(buffer)) >> buffer;
     //      if (!strcasecmp(buffer, "p")) {
     double def;
     GeomTools::GetReal(IS, def);
@@ -1577,7 +1577,7 @@ void BRepTools_ShapeSet::ReadPolygon3D(Standard_IStream&            IS,
   int    i, j, p, nbpol = 0, nbnodes = 0, hasparameters = false;
   double d, x, y, z;
 
-  IS >> buffer;
+  IS >> std::setw(sizeof(buffer)) >> buffer;
   if (strstr(buffer, "Polygon3D") == nullptr)
   {
     return;
@@ -1847,7 +1847,7 @@ void BRepTools_ShapeSet::ReadTriangulation(Standard_IStream&            IS,
 
   occ::handle<Poly_Triangulation> T;
 
-  IS >> buffer;
+  IS >> std::setw(sizeof(buffer)) >> buffer;
   if (strstr(buffer, "Triangulations") == nullptr)
   {
     return;

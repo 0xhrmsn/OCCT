@@ -39,6 +39,7 @@
 #include <Standard_Integer.hxx>
 #include <NCollection_Array1.hxx>
 #include <Message_ProgressScope.hxx>
+#include <iomanip>
 
 #define PLANE 1
 #define CYLINDER 2
@@ -812,7 +813,7 @@ Standard_IStream& BinTools_SurfaceSet::ReadSurface(Standard_IStream&          IS
 void BinTools_SurfaceSet::Read(Standard_IStream& IS, const Message_ProgressRange& theRange)
 {
   char buffer[255];
-  IS >> buffer;
+  IS >> std::setw(sizeof(buffer)) >> buffer;
   if (IS.fail() || strcmp(buffer, "Surfaces"))
   {
     Standard_SStream aMsg;

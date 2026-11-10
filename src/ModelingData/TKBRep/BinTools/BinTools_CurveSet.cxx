@@ -36,6 +36,7 @@
 #include <NCollection_Array1.hxx>
 #include <Standard_Integer.hxx>
 #include <Message_ProgressScope.hxx>
+#include <iomanip>
 
 #define LINE 1
 #define CIRCLE 2
@@ -643,7 +644,7 @@ Standard_IStream& BinTools_CurveSet::ReadCurve(Standard_IStream& IS, occ::handle
 void BinTools_CurveSet::Read(Standard_IStream& IS, const Message_ProgressRange& theRange)
 {
   char buffer[255];
-  IS >> buffer;
+  IS >> std::setw(sizeof(buffer)) >> buffer;
   if (IS.fail() || strcmp(buffer, "Curves"))
   {
     Standard_SStream aMsg;

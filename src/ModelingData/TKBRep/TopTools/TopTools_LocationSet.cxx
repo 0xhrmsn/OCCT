@@ -260,7 +260,7 @@ void TopTools_LocationSet::Read(Standard_IStream& IS, const Message_ProgressRang
   char buffer[255];
   int  l1, p;
 
-  IS >> buffer;
+  IS >> std::setw(sizeof(buffer)) >> buffer;
   if (strcmp(buffer, "Locations"))
   {
     std::cout << "Not a location table " << '\n';

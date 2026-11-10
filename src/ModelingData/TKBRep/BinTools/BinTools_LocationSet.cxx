@@ -18,6 +18,7 @@
 #include <gp_Vec.hxx>
 #include <Standard_ErrorHandler.hxx>
 #include <TopLoc_Location.hxx>
+#include <iomanip>
 
 //=================================================================================================
 // function : operator >> (gp_Trsf& T)
@@ -201,7 +202,7 @@ void BinTools_LocationSet::Read(Standard_IStream& IS)
   char buffer[255];
   int  l1, p;
 
-  IS >> buffer;
+  IS >> std::setw(sizeof(buffer)) >> buffer;
   if (IS.fail() || (strcmp(buffer, "Locations")))
   {
     Standard_SStream aMsg;

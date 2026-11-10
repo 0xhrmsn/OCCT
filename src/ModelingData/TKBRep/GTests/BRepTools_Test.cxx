@@ -39,9 +39,12 @@
 
 #include <gtest/gtest.h>
 
+#include <Standard_Failure.hxx>
+
 #include <atomic>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <sstream>
 #include <string>
 
@@ -316,4 +319,71 @@ TEST(BRepTools_Test, WriteRead_TriangulationNormalsKept_Binary)
   TopoDS_Shape       aRead;
   BinTools::Read(aRead, anIn);
   EXPECT_TRUE(allFacesHaveNormals(aRead));
+}
+
+
+// A damaged or crafted file replaces a word of the text format by a word longer than the buffer
+// it is read into: the reader rejects the file instead of writing past the end of the buffer.
+TEST(BRepTools_Test, Read_LongWord_Text)
+{
+  const TopoDS_Shape aBox = BRepPrimAPI_MakeBox(10.0, 20.0, 30.0).Shape();
+  BRepMesh_IncrementalMesh(aBox, 0.5);
+  std::ostringstream anOut;
+  BRepTools::Write(aBox, anOut, true, true, TopTools_FormatVersion_CURRENT);
+  const std::string anIntact = anOut.str();
+
+  struct Word
+  {
+    const char* Line;     //!< the line start to find, with the character that follows the word
+    bool        IsLast;   //!< search from the end of the file
+    const char* Prefix;   //!< kept before the long word
+    bool        MustFail; //!< a wrong section header or reference rejects the whole file
+  };
+
+  // section headers, a shape type, the shape flags, the marker of a polygon on triangulation and
+  // the reference of the root shape
+  const Word aWords[] = {{"Locations ", false, "", true},
+                         {"Curve2ds ", false, "", true},
+                         {"Curves ", false, "", true},
+                         {"Polygon3D ", false, "", true},
+                         {"PolygonOnTriangulations ", false, "", true},
+                         {"Surfaces ", false, "", true},
+                         {"Triangulations ", false, "", true},
+                         {"TShapes ", false, "", true},
+#ifndef No_Exception
+                         // these lead to a shape index read from the file, which is checked only
+                         // when exceptions are enabled
+                         {"Fa\n", false, "", false},
+                         {"0101000\n", false, "", false},
+                         {"+1 ", true, "+", true},
+#endif
+                         {"p ", false, "", false}};
+  for (const Word& aWord : aWords)
+  {
+    const std::string aLine = std::string("\n") + aWord.Line;
+    const size_t      aPos  = aWord.IsLast ? anIntact.rfind(aLine) : anIntact.find(aLine);
+    ASSERT_NE(aPos, std::string::npos) << aWord.Line;
+    std::string aData = anIntact;
+    aData.replace(aPos + 1,
+                  strlen(aWord.Line) - 1,
+                  std::string(aWord.Prefix) + std::string(2000, 'A'));
+
+    std::istringstream anIn(aData);
+    TopoDS_Shape       aRead;
+    bool               isFailed = false;
+    try
+    {
+      BRepTools::Read(aRead, anIn, BRep_Builder());
+    }
+    catch (const Standard_Failure&)
+    {
+      isFailed = true;
+    }
+    // without the bound, the long word is written past the end of the buffer and the process
+    // stops before this point
+    if (aWord.MustFail)
+    {
+      EXPECT_TRUE(isFailed || aRead.IsNull()) << aWord.Line;
+    }
+  }
 }

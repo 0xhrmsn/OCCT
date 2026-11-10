@@ -1275,7 +1275,7 @@ void GeomTools_SurfaceSet::Read(Standard_IStream& IS, const Message_ProgressRang
     return;
   }
   char buffer[255];
-  IS >> buffer;
+  IS >> std::setw(sizeof(buffer)) >> buffer;
   if (strcmp(buffer, "Surfaces"))
   {
     std::cout << "Not a surface table" << '\n';

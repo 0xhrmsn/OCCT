@@ -34,6 +34,8 @@
 
 #include <BRepMesh_IncrementalMesh.hxx>
 
+#include <cctype>
+#include <cstring>
 #include <sstream>
 #include <string>
 
@@ -371,4 +373,51 @@ TEST(BinTools_ReadLimitsTest, IntactStream_TriangulationRead)
   ASSERT_FALSE(aTri.IsNull());
   EXPECT_EQ(aTri->NbNodes(), aNbNodes);
   EXPECT_EQ(aTri->NbTriangles(), aNbTriangles);
+}
+
+// A damaged or crafted file replaces a section header by a word longer than the buffer it is
+// read into: the reader reports a bad header instead of writing past the end of the buffer.
+TEST(BinTools_ReadLimitsTest, ShapeSet_LongSectionHeader)
+{
+  int                aNbNodes = 0, aNbTriangles = 0;
+  const TopoDS_Face  aFace = meshedFace(aNbNodes, aNbTriangles);
+  std::ostringstream anOut;
+  BinTools::Write(aFace, anOut, true, false, BinTools_FormatVersion_CURRENT);
+  const std::string anIntact = anOut.str();
+
+  const char* const aHeaders[] = {"Locations",
+                                  "Curve2ds",
+                                  "Curves",
+                                  "Polygon3D",
+                                  "PolygonOnTriangulations",
+                                  "Surfaces",
+                                  "Triangulations",
+                                  "TShapes"};
+  for (const char* aHeader : aHeaders)
+  {
+    // the header may follow binary data, so it is the first occurrence not preceded by a
+    // letter ("Triangulations" is also the end of "PolygonOnTriangulations")
+    const std::string aWord = std::string(aHeader) + " ";
+    size_t            aPos  = anIntact.find(aWord);
+    while (aPos != std::string::npos && aPos > 0 && isalpha((unsigned char)anIntact[aPos - 1]))
+    {
+      aPos = anIntact.find(aWord, aPos + 1);
+    }
+    ASSERT_NE(aPos, std::string::npos) << aHeader;
+    std::string aData = anIntact;
+    aData.replace(aPos, strlen(aHeader), std::string(2000, 'A'));
+
+    std::istringstream anIn(aData);
+    TopoDS_Shape       aRead;
+    bool               isFailed = false;
+    try
+    {
+      BinTools::Read(aRead, anIn);
+    }
+    catch (const Standard_Failure&)
+    {
+      isFailed = true;
+    }
+    EXPECT_TRUE(isFailed) << aHeader;
+  }
 }

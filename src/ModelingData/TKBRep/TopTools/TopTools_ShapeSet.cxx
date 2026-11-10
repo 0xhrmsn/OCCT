@@ -35,6 +35,7 @@
 #include <cmath>
 #include <cstring>
 #include <locale>
+#include <iomanip>
 
 namespace
 {
@@ -648,7 +649,7 @@ void TopTools_ShapeSet::Write(Standard_OStream& OS, const Message_ProgressRange&
 static TopAbs_ShapeEnum ReadShapeEnum(Standard_IStream& IS)
 {
   char buffer[255];
-  IS >> buffer;
+  IS >> std::setw(sizeof(buffer)) >> buffer;
 
   switch (buffer[0])
   {
@@ -784,7 +785,7 @@ void TopTools_ShapeSet::Read(Standard_IStream& IS, const Message_ProgressRange& 
   //-----------------------------------------
 
   char buffer[255];
-  IS >> buffer;
+  IS >> std::setw(sizeof(buffer)) >> buffer;
   if (strcmp(buffer, "TShapes"))
   {
     std::cout << "Not a TShape table" << '\n';
@@ -813,7 +814,7 @@ void TopTools_ShapeSet::Read(Standard_IStream& IS, const Message_ProgressRange& 
     }
 
     // Set the flags
-    IS >> buffer;
+    IS >> std::setw(sizeof(buffer)) >> buffer;
 
     // sub-shapes
     TopoDS_Shape SS;
@@ -907,7 +908,7 @@ void TopTools_ShapeSet::Read(TopoDS_Shape& S, Standard_IStream& IS, const int nb
     return;
   }
   char buffer[255];
-  IS >> buffer;
+  IS >> std::setw(sizeof(buffer)) >> buffer;
   if (buffer[0] == '*')
   {
     S = TopoDS_Shape();

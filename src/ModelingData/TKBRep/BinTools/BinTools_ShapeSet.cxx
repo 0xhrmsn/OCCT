@@ -47,6 +47,7 @@
 #include <Message_ProgressRange.hxx>
 
 #include <cstring>
+#include <iomanip>
 
 //=================================================================================================
 
@@ -433,7 +434,7 @@ void BinTools_ShapeSet::Read(Standard_IStream& IS, const Message_ProgressRange& 
   //-----------------------------------------
 
   char buffer[255];
-  IS >> buffer;
+  IS >> std::setw(sizeof(buffer)) >> buffer;
   if (IS.fail() || strcmp(buffer, "TShapes"))
   {
     Standard_SStream aMsg;
@@ -1322,7 +1323,7 @@ void BinTools_ShapeSet::ReadPolygonOnTriangulation(Standard_IStream&            
                                                    const Message_ProgressRange& theRange)
 {
   char aHeader[255];
-  IS >> aHeader;
+  IS >> std::setw(sizeof(aHeader)) >> aHeader;
   if (IS.fail() || (strstr(aHeader, "PolygonOnTriangulations") == nullptr))
   {
     throw Standard_Failure(
@@ -1434,7 +1435,7 @@ void BinTools_ShapeSet::WritePolygon3D(Standard_OStream&            OS,
 void BinTools_ShapeSet::ReadPolygon3D(Standard_IStream& IS, const Message_ProgressRange& theRange)
 {
   char aHeader[255];
-  IS >> aHeader;
+  IS >> std::setw(sizeof(aHeader)) >> aHeader;
 
   if (IS.fail() || strstr(aHeader, "Polygon3D") == nullptr)
   {
@@ -1582,7 +1583,7 @@ void BinTools_ShapeSet::ReadTriangulation(Standard_IStream&            IS,
                                           const Message_ProgressRange& theRange)
 {
   char aHeader[255];
-  IS >> aHeader;
+  IS >> std::setw(sizeof(aHeader)) >> aHeader;
   if (IS.fail() || (strstr(aHeader, "Triangulations") == nullptr))
   {
     throw Standard_Failure("BinTools_ShapeSet::Triangulation: Not a Triangulation section");
