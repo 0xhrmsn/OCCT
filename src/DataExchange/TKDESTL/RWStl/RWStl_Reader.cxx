@@ -148,7 +148,13 @@ bool RWStl_Reader::Read(const char* theFile, const Message_ProgressRange& thePro
   // (probing may bring stream to fail state if EOF is reached)
   bool isAscii = ((size_t)theEnd < THE_STL_MIN_FILE_SIZE || IsAscii(*aStream, true));
 
-  Standard_ReadLineBuffer aBuffer(THE_BUFFER_SIZE);
+  if (isAscii)
+  {
+    // the lines are read through a buffer, which can hold the following solids when the stream
+    // is already at its end: the state of the stream does not tell whether a solid follows
+    Standard_ReadLineBuffer aBuffer(THE_BUFFER_SIZE);
+    return ReadAsciiSolids(*aStream, aBuffer, theEnd, theProgress) && !aStream->bad();
+  }
 
   // Note: here we are trying to handle rare but realistic case of
   // STL files which are composed of several STL data blocks
@@ -158,19 +164,9 @@ bool RWStl_Reader::Read(const char* theFile, const Message_ProgressRange& thePro
   Message_ProgressScope aPS(theProgress, nullptr, 1, true);
   while (aStream->good())
   {
-    if (isAscii)
+    if (!ReadBinary(*aStream, aPS.Next(2)))
     {
-      if (!ReadAscii(*aStream, aBuffer, theEnd, aPS.Next(2)))
-      {
-        break;
-      }
-    }
-    else
-    {
-      if (!ReadBinary(*aStream, aPS.Next(2)))
-      {
-        break;
-      }
+      break;
     }
     *aStream >> std::ws; // skip any white spaces
     AddSolid();
@@ -279,6 +275,18 @@ static bool ReadVertex(const char* theStr, double& theX, double& theY, double& t
   return aEnd != aStr;
 }
 
+static bool isBlankLine(const char* theStr)
+{
+  for (; *theStr != '\0'; ++theStr)
+  {
+    if (!isspace((unsigned char)*theStr))
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
 //=================================================================================================
 
 bool RWStl_Reader::ReadAscii(Standard_IStream&            theStream,
@@ -286,11 +294,8 @@ bool RWStl_Reader::ReadAscii(Standard_IStream&            theStream,
                              const std::streampos         theUntilPos,
                              const Message_ProgressRange& theProgress)
 {
-  // use method seekpos() to get true 64-bit offset to enable
-  // handling of large files (VS 2010 64-bit)
-  const int64_t aStartPos = GETPOS(theStream.tellg());
-  size_t        aLineLen  = 0;
-  const char*   aLine;
+  size_t      aLineLen = 0;
+  const char* aLine;
 
   // skip header "solid ..."
   aLine = theBuffer.ReadLine(theStream, aLineLen);
@@ -304,6 +309,60 @@ bool RWStl_Reader::ReadAscii(Standard_IStream&            theStream,
     Message::SendFail("Error: premature end of file");
     return false;
   }
+  return readAsciiFacets(theStream, theBuffer, theUntilPos, theProgress);
+}
+
+//=================================================================================================
+
+bool RWStl_Reader::ReadAsciiSolids(Standard_IStream&            theStream,
+                                   Standard_ReadLineBuffer&     theBuffer,
+                                   const std::streampos         theUntilPos,
+                                   const Message_ProgressRange& theProgress)
+{
+  // infinite (logarithmic) progress scale: the number of solids is not known
+  Message_ProgressScope aPS(theProgress, nullptr, 1, true);
+  if (!ReadAscii(theStream, theBuffer, theUntilPos, aPS.Next(2)))
+  {
+    return false;
+  }
+  for (;;)
+  {
+    AddSolid();
+
+    size_t      aLineLen = 0;
+    const char* aLine    = theBuffer.ReadLine(theStream, aLineLen);
+    while (aLine != nullptr && isBlankLine(aLine))
+    {
+      aLine = theBuffer.ReadLine(theStream, aLineLen);
+    }
+    if (aLine == nullptr)
+    {
+      return true;
+    }
+    if (!str_starts_with(aLine, "solid", 5))
+    {
+      Message::SendWarning("Warning: data after the last solid of the STL file are ignored");
+      return true;
+    }
+    if (!readAsciiFacets(theStream, theBuffer, theUntilPos, aPS.Next(2)))
+    {
+      return false;
+    }
+  }
+}
+
+//=================================================================================================
+
+bool RWStl_Reader::readAsciiFacets(Standard_IStream&            theStream,
+                                   Standard_ReadLineBuffer&     theBuffer,
+                                   const std::streampos         theUntilPos,
+                                   const Message_ProgressRange& theProgress)
+{
+  // use method seekpos() to get true 64-bit offset to enable
+  // handling of large files (VS 2010 64-bit)
+  const int64_t aStartPos = GETPOS(theStream.tellg());
+  size_t        aLineLen  = 0;
+  const char*   aLine     = nullptr;
 
   MergeNodeTool aMergeTool(this);
   aMergeTool.SetMergeAngle(myMergeAngle);

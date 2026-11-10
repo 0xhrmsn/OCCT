@@ -258,7 +258,7 @@ occ::handle<Poly_Triangulation> RWStl::ReadAscii(const OSD_Path&              th
 
   Reader                  aReader;
   Standard_ReadLineBuffer aBuffer(THE_BUFFER_SIZE);
-  if (!aReader.ReadAscii(*aStream, aBuffer, theEnd, theProgress))
+  if (!aReader.ReadAsciiSolids(*aStream, aBuffer, theEnd, theProgress))
   {
     return occ::handle<Poly_Triangulation>();
   }
@@ -533,7 +533,7 @@ occ::handle<Poly_Triangulation> RWStl::ReadAsciiStream(Standard_IStream&        
   theStream.seekg(0, Standard_IStream::beg);
 
   Standard_ReadLineBuffer aBuffer(THE_BUFFER_SIZE);
-  if (!aReader.ReadAscii(theStream, aBuffer, theEnd, theProgress))
+  if (!aReader.ReadAsciiSolids(theStream, aBuffer, theEnd, theProgress))
   {
     return occ::handle<Poly_Triangulation>();
   }

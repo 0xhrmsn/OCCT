@@ -13,11 +13,13 @@
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <TopExp_Explorer.hxx>
 #include <Poly_Triangulation.hxx>
+#include <NCollection_Sequence.hxx>
 #include <gp_Pnt.hxx>
 
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <fstream>
 #include <locale>
 #include <sstream>
 
@@ -101,4 +103,41 @@ TEST(StlAPI_WriterTest, Write_Utf8FileName)
     }
     std::filesystem::remove(aPath, anError);
   }
+}
+
+// A text STL file of several solids was read up to the end of the first solid when the file was
+// smaller than the read buffer: the stream was already at its end, the other solids were in the
+// buffer.
+TEST(RWStlTest, ReadFile_AsciiSeveralSolids)
+{
+  const std::filesystem::path aPath =
+    std::filesystem::temp_directory_path() / "occt_rwstl_several_solids.stl";
+  {
+    std::ofstream anOut(aPath, std::ios::binary);
+    anOut << "solid a\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\n"
+             "endloop\nendfacet\nendsolid a\n"
+             "\n"
+             "solid b\nfacet normal 1 0 0\nouter loop\nvertex 5 0 0\nvertex 5 1 0\nvertex 5 0 1\n"
+             "endloop\nendfacet\nendsolid b\n"
+             "solid c\nfacet normal 1 0 0\nouter loop\nvertex 9 0 0\nvertex 9 1 0\nvertex 9 0 1\n"
+             "endloop\nendfacet\nendsolid c\n";
+  }
+  const std::string aFile = aPath.string();
+
+  const occ::handle<Poly_Triangulation> aMesh = RWStl::ReadFile(aFile.c_str());
+  ASSERT_FALSE(aMesh.IsNull());
+  EXPECT_EQ(aMesh->NbTriangles(), 3);
+
+  NCollection_Sequence<occ::handle<Poly_Triangulation>> aSolids;
+  RWStl::ReadFile(aFile.c_str(), M_PI / 2.0, aSolids);
+  EXPECT_EQ(aSolids.Length(), 3);
+
+  {
+    std::ifstream                         anIn(aPath, std::ios::binary);
+    const occ::handle<Poly_Triangulation> aStreamMesh = RWStl::ReadStream(anIn);
+    ASSERT_FALSE(aStreamMesh.IsNull());
+    EXPECT_EQ(aStreamMesh->NbTriangles(), 3);
+  }
+
+  std::filesystem::remove(aPath);
 }

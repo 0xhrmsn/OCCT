@@ -75,6 +75,21 @@ public:
                                  const std::streampos         theUntilPos,
                                  const Message_ProgressRange& theProgress);
 
+  //! Reads all the solids of Ascii STL data: each "solid" ... "endsolid" block is read as by
+  //! ReadAscii() and followed by a call to AddSolid(). Empty lines between the blocks are skipped.
+  //! Returns true if success, false on error or user break.
+  Standard_EXPORT bool ReadAsciiSolids(Standard_IStream&            theStream,
+                                       Standard_ReadLineBuffer&     theBuffer,
+                                       const std::streampos         theUntilPos,
+                                       const Message_ProgressRange& theProgress);
+
+private:
+  //! Reads the facets of an Ascii solid whose header line is already read, until "endsolid".
+  bool readAsciiFacets(Standard_IStream&            theStream,
+                       Standard_ReadLineBuffer&     theBuffer,
+                       const std::streampos         theUntilPos,
+                       const Message_ProgressRange& theProgress);
+
 public:
   //! Callback function to be implemented in descendant.
   //! Should create new node with specified coordinates in the target model, and return its ID as
