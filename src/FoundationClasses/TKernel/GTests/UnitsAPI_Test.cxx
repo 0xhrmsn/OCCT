@@ -12,6 +12,9 @@
 // commercial license or contractual agreement.
 
 #include <UnitsAPI.hxx>
+#include <Message.hxx>
+#include <Message_Messenger.hxx>
+#include <Message_Printer.hxx>
 
 #include <gtest/gtest.h>
 
@@ -36,4 +39,37 @@ TEST(UnitsAPI_Test, AnyToAny_UnknownUnit)
   const double aResult2 = UnitsAPI::AnyToAny(1.0, "mm", "unknown_unit");
   EXPECT_DOUBLE_EQ(1.0, aResult1);
   EXPECT_DOUBLE_EQ(1.0, aResult2);
+}
+
+namespace
+{
+//! Counts the warnings sent while it is attached to the default messenger.
+class WarningCounter : public Message_Printer
+{
+public:
+  void send(const TCollection_AsciiString&, const Message_Gravity theGravity) const override
+  {
+    if (theGravity == Message_Warning)
+    {
+      ++myNbWarnings;
+    }
+  }
+
+  mutable int myNbWarnings = 0;
+};
+} // namespace
+
+// An unknown unit was converted to 0 without any message, like a real 0.
+TEST(UnitsAPI_Test, AnyToSI_UnknownUnit_Warns)
+{
+  occ::handle<WarningCounter> aCounter = new WarningCounter();
+  Message::DefaultMessenger()->AddPrinter(aCounter);
+  const double aKnown    = UnitsAPI::AnyToSI(1.0, "mm");
+  const int    aNbKnown  = aCounter->myNbWarnings;
+  const double anUnknown = UnitsAPI::AnyToSI(1.0, "xyz");
+  Message::DefaultMessenger()->RemovePrinter(aCounter);
+  EXPECT_DOUBLE_EQ(aKnown, 0.001);
+  EXPECT_EQ(aNbKnown, 0);
+  EXPECT_EQ(anUnknown, 0.0);
+  EXPECT_EQ(aCounter->myNbWarnings, 1);
 }

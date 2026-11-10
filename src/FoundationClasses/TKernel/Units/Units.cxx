@@ -225,6 +225,8 @@ double Units::ToSI(const double aData, const char* const aUnit, occ::handle<Unit
     Units_UnitSentence unitsentence(aUnit);
     if (!unitsentence.IsDone())
     {
+      // 0 is returned for an unknown unit; the message tells it from a real 0
+      Message::SendWarning(TCollection_AsciiString("Units: unknown unit '") + aUnit + "'");
       return 0.0;
     }
     occ::handle<Units_Token> token = unitsentence.Evaluate();
@@ -263,6 +265,8 @@ double Units::FromSI(const double                   aData,
     Units_UnitSentence unitsentence(aUnit);
     if (!unitsentence.IsDone())
     {
+      // 0 is returned for an unknown unit; the message tells it from a real 0
+      Message::SendWarning(TCollection_AsciiString("Units: unknown unit '") + aUnit + "'");
       return 0.0;
     }
     occ::handle<Units_Token> token = unitsentence.Evaluate();
