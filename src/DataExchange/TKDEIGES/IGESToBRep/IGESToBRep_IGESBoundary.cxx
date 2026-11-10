@@ -323,7 +323,8 @@ bool IGESToBRep_IGESBoundary::Transfer(
     }
   }
 
-  if (number > 1)
+  // the first curve translated starts the wire: the curves before it can have been skipped
+  if (number > 1 && !mysewd.IsNull())
   {
     mysewd->Add(Gsewd->Wire());
     mysewd3d->Add(Gsewd3d->Wire());

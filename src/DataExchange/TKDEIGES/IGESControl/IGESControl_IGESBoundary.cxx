@@ -509,7 +509,8 @@ bool IGESControl_IGESBoundary::Transfer(
     }
   }
 
-  if (number > 1)
+  // the first curve translated starts the wire: the curves before it can have been skipped
+  if (number > 1 && !mysewd.IsNull())
   {
     okCurve = okCurve
               && Connect(saw,

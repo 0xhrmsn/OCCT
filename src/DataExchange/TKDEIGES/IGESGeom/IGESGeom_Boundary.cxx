@@ -21,6 +21,7 @@
 #include <IGESGeom_Boundary.hxx>
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESGeom_Boundary, IGESData_IGESEntity)
 
@@ -34,9 +35,12 @@ void IGESGeom_Boundary::Init(
   const occ::handle<NCollection_HArray1<int>>&                              allSenses,
   const occ::handle<IGESBasic_HArray1OfHArray1OfIGESEntity>&                allParameterCurves)
 {
-  int num1 = allSenses->Length();
-  if (allSenses->Lower() != 1 || (allModelCurves->Lower() != 1 || allModelCurves->Length() != num1)
-      || (allParameterCurves->Lower() != 1 || allParameterCurves->Length() != num1))
+  int num1 = IGESData_NonNull(allSenses, "IGESGeom_Boundary::Init")->Length();
+  if (IGESData_NonNull(allSenses, "IGESGeom_Boundary::Init")->Lower() != 1
+      || (IGESData_NonNull(allModelCurves, "IGESGeom_Boundary::Init")->Lower() != 1
+          || IGESData_NonNull(allModelCurves, "IGESGeom_Boundary::Init")->Length() != num1)
+      || (IGESData_NonNull(allParameterCurves, "IGESGeom_Boundary::Init")->Lower() != 1
+          || IGESData_NonNull(allParameterCurves, "IGESGeom_Boundary::Init")->Length() != num1))
   {
     throw Standard_DimensionMismatch("IGESGeom_Boundary: Init");
   }

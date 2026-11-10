@@ -20,6 +20,7 @@
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
 #include <TCollection_HAsciiString.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESDefs_MacroDef, IGESData_IGESEntity)
 
@@ -31,7 +32,7 @@ void IGESDefs_MacroDef::Init(
   const occ::handle<NCollection_HArray1<occ::handle<TCollection_HAsciiString>>>& langStatements,
   const occ::handle<TCollection_HAsciiString>&                                   endMacro)
 {
-  if (langStatements->Lower() != 1)
+  if (IGESData_NonNull(langStatements, "IGESDefs_MacroDef::Init")->Lower() != 1)
   {
     throw Standard_DimensionMismatch("IGESDefs_MacroDef : Init");
   }

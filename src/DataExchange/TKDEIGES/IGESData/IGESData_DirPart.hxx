@@ -83,11 +83,13 @@ public:
   Standard_EXPORT IGESData_IGESType Type() const;
 
 private:
-  int  thevals[17];
-  char theres1[10];
-  char theres2[10];
-  char thelabl[10];
-  char thesubs[10];
+  // zero until Init(): the directory part of an entity is not set when the reading of the
+  // directory section stops before it (damaged file)
+  int  thevals[17] = {};
+  char theres1[10] = {};
+  char theres2[10] = {};
+  char thelabl[10] = {};
+  char thesubs[10] = {};
 };
 
 #endif // _IGESData_DirPart_HeaderFile

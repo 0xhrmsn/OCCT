@@ -20,6 +20,7 @@
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
 #include <TCollection_HAsciiString.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESAppli_PWBArtworkStackup, IGESData_IGESEntity)
 
@@ -29,7 +30,7 @@ void IGESAppli_PWBArtworkStackup::Init(const int                                
                                        const occ::handle<TCollection_HAsciiString>& anArtIdent,
                                        const occ::handle<NCollection_HArray1<int>>& allLevelNums)
 {
-  if (allLevelNums->Lower() != 1)
+  if (IGESData_NonNull(allLevelNums, "IGESAppli_PWBArtworkStackup::Init")->Lower() != 1)
   {
     throw Standard_DimensionMismatch("IGESAppli_PWBArtworkStackup : Init");
   }

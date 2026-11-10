@@ -21,6 +21,7 @@
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
 #include <TCollection_HAsciiString.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESDraw_NetworkSubfigureDef, IGESData_IGESEntity)
 
@@ -37,7 +38,8 @@ void IGESDraw_NetworkSubfigureDef::Init(
 {
   if (!allPointEntities.IsNull())
   {
-    if (allPointEntities->Lower() != 1 || allEntities->Lower() != 1)
+    if (allPointEntities->Lower() != 1
+        || IGESData_NonNull(allEntities, "IGESDraw_NetworkSubfigureDef::Init")->Lower() != 1)
     {
       throw Standard_DimensionMismatch("IGESDraw_NetworkSubfigureDef : Init");
     }

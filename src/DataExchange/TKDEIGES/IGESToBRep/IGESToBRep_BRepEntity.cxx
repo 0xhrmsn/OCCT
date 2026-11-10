@@ -50,6 +50,7 @@
 #include <IGESToBRep_ToolContainer.hxx>
 #include <IGESToBRep_TopoCurve.hxx>
 #include <IGESToBRep_TopoSurface.hxx>
+#include <IGESToBRep_TransferGuard.pxx>
 #include <MoniTool_Macros.hxx>
 #include <Message_Msg.hxx>
 #include <Message_ProgressScope.hxx>
@@ -75,6 +76,12 @@
 
 // rln
 // #include <ShapeFix_Face.hxx>
+
+namespace
+{
+const auto isTranslatable = IGESToBRep_TransferGuard::IsTranslatable;
+} // namespace
+
 //=================================================================================================
 
 IGESToBRep_BRepEntity::IGESToBRep_BRepEntity()
@@ -142,9 +149,13 @@ TopoDS_Vertex IGESToBRep_BRepEntity::TransferVertex(const occ::handle<IGESSolid_
                                                     const int                                index)
 {
   TopoDS_Vertex res;
+  if (start.IsNull())
+  {
+    return res;
+  }
 
   int nbshapes = NbShapeResult(start);
-  if (nbshapes == 0)
+  if (nbshapes == 0 && isTranslatable(GetModel(), start))
   {
     BRep_Builder B;
     for (int inum = 1; inum <= start->NbVertices(); inum++)
@@ -178,9 +189,13 @@ TopoDS_Shape IGESToBRep_BRepEntity::TransferEdge(const occ::handle<IGESSolid_Edg
 {
   TopoDS_Shape res;
   BRep_Builder B;
+  if (start.IsNull())
+  {
+    return res;
+  }
 
   int nbshapes = NbShapeResult(start);
-  if (nbshapes == 0)
+  if (nbshapes == 0 && isTranslatable(GetModel(), start))
   {
     IGESToBRep_TopoCurve TC(*this);
     for (int inum = 1; inum <= start->NbEdges(); inum++)
@@ -195,12 +210,19 @@ TopoDS_Shape IGESToBRep_BRepEntity::TransferEdge(const occ::handle<IGESSolid_Edg
       occ::handle<IGESSolid_VertexList> theendlist  = start->EndVertexList(inum);
       int                               theendindex = start->EndVertexIndex(inum);
       TopoDS_Vertex                     V2          = TransferVertex(theendlist, theendindex);
+      if (V1.IsNull() || V2.IsNull())
+      {
+        // a vertex list not translated or an index out of it (reported by TransferVertex())
+        TopoDS_Edge Sh;
+        AddShapeResult(start, Sh); // add null shape to avoid shift of indexing
+        continue;
+      }
 
       // Curve
       // -----
 
       occ::handle<IGESData_IGESEntity> thecurve = start->Curve(inum);
-      if (thecurve.IsNull() || !IGESToBRep::IsTopoCurve(thecurve)
+      if (!isTranslatable(GetModel(), thecurve) || !IGESToBRep::IsTopoCurve(thecurve)
           || thecurve->IsKind(STANDARD_TYPE(IGESGeom_CurveOnSurface))
           || thecurve->IsKind(STANDARD_TYPE(IGESGeom_Boundary)))
       {
@@ -317,8 +339,12 @@ TopoDS_Shape IGESToBRep_BRepEntity::TransferLoop(const occ::handle<IGESSolid_Loo
                                                  const double                       uFact)
 {
   TopoDS_Shape res;
+  if (start.IsNull())
+  {
+    return res;
+  }
 
-  if (!HasShapeResult(start))
+  if (!HasShapeResult(start) && isTranslatable(GetModel(), start))
   {
     TopoDS_Wire                       mywire;
     bool                              okCurve = true, okCurve3d = true, okCurve2d = true;
@@ -356,7 +382,12 @@ TopoDS_Shape IGESToBRep_BRepEntity::TransferLoop(const occ::handle<IGESSolid_Loo
         {
           DeclareAndCast(IGESSolid_VertexList, thelist, theedge);
           TopoDS_Vertex V1 = TransferVertex(thelist, indexlist);
-          TopoDS_Edge   E;
+          if (V1.IsNull())
+          {
+            // the vertex list is not translated or the index is out of it (reported above)
+            continue;
+          }
+          TopoDS_Edge E;
           B.MakeEdge(E);
           // szv#4:S4163:12Mar99 SGI warns
           TopoDS_Shape sh = V1.Oriented(TopAbs_FORWARD);
@@ -402,6 +433,7 @@ TopoDS_Shape IGESToBRep_BRepEntity::TransferLoop(const occ::handle<IGESSolid_Loo
         //- 2D curve is 102
         occ::handle<NCollection_HSequence<occ::handle<Standard_Transient>>> seq2d;
         if (curve3d->NbEdges() == 1 && nbparam == 1
+            && isTranslatable(GetModel(), start->ParametricCurve(iedge, 1))
             && IGESToBRep::IGESCurveToSequenceOfIGESCurve(start->ParametricCurve(iedge, 1), seq2d)
                  == 1)
         {
@@ -421,11 +453,12 @@ TopoDS_Shape IGESToBRep_BRepEntity::TransferLoop(const occ::handle<IGESSolid_Loo
                                 !orientation,
                                 iedge,
                                 lsewd);
-        if (iedge == 1)
+        // initialization by the first translated edge: the edges skipped above are not in the wire
+        if (sewd.IsNull())
         {
-          sewd = IB->WireData(); // initialization
+          sewd = IB->WireData();
         }
-        if (curve3d->NbEdges() == 1 && lsewd->NbEdges() == 1)
+        if (curve3d->NbEdges() == 1 && !lsewd.IsNull() && lsewd->NbEdges() == 1)
         { // the condition corresponds to limitation above
           // to keep sharing of edges all geometric representations should be put
           // into the edge from EdgeList
@@ -466,8 +499,12 @@ TopoDS_Shape IGESToBRep_BRepEntity::TransferLoop(const occ::handle<IGESSolid_Loo
 TopoDS_Shape IGESToBRep_BRepEntity::TransferFace(const occ::handle<IGESSolid_Face>& start)
 {
   TopoDS_Shape res;
+  if (start.IsNull())
+  {
+    return res;
+  }
 
-  if (!HasShapeResult(start))
+  if (!HasShapeResult(start) && isTranslatable(GetModel(), start))
   {
     BRep_Builder                     B;
     TopoDS_Face                      F;
@@ -477,7 +514,7 @@ TopoDS_Shape IGESToBRep_BRepEntity::TransferFace(const occ::handle<IGESSolid_Fac
 
     // surface
     // -------
-    if (surf.IsNull() || !IGESToBRep::IsTopoSurface(surf)
+    if (!isTranslatable(GetModel(), surf) || !IGESToBRep::IsTopoSurface(surf)
         || surf->IsKind(STANDARD_TYPE(IGESGeom_Plane))
         || surf->IsKind(STANDARD_TYPE(IGESGeom_BoundedSurface))
         || surf->IsKind(STANDARD_TYPE(IGESGeom_TrimmedSurface))
@@ -562,8 +599,12 @@ TopoDS_Shape IGESToBRep_BRepEntity::TransferShell(const occ::handle<IGESSolid_Sh
                                                   const Message_ProgressRange&        theProgress)
 {
   TopoDS_Shape res;
+  if (start.IsNull())
+  {
+    return res;
+  }
 
-  if (!HasShapeResult(start))
+  if (!HasShapeResult(start) && isTranslatable(GetModel(), start))
   {
     TopoDS_Shell S;
     BRep_Builder B;
@@ -628,8 +669,12 @@ TopoDS_Shape IGESToBRep_BRepEntity::TransferManifoldSolid(
   const Message_ProgressRange&                theProgress)
 {
   TopoDS_Shape res;
+  if (start.IsNull())
+  {
+    return res;
+  }
 
-  if (!HasShapeResult(start))
+  if (!HasShapeResult(start) && isTranslatable(GetModel(), start))
   {
     TopoDS_Solid S;
     BRep_Builder B;
@@ -673,9 +718,11 @@ TopoDS_Shape IGESToBRep_BRepEntity::TransferManifoldSolid(
           }
           else
           {
-            //  AddWarning(start,"ManifoldSolid : one VoidShell is Null");
-            TopoDS_Shell Shell;
-            B.Add(S, Shell);
+            // the void is missing in the solid: a null shell was added, which crashed
+            Message_Msg Msg1156("IGES_1156"); // transfer failed : entity skipped
+            Msg1156.Arg("void shell");
+            Msg1156.Arg(GetModel()->StringLabel(start));
+            SendFail(start, Msg1156);
           }
         }
       }

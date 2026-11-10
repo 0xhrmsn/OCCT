@@ -50,6 +50,7 @@
 #include <IGESSolid_ToroidalSurface.hxx>
 #include <IGESSolid_VertexList.hxx>
 #include <IGESToBRep_AlgoContainer.hxx>
+#include <IGESToBRep_TransferGuard.pxx>
 #include <MoniTool_Macros.hxx>
 #include <Precision.hxx>
 #include <Standard_ErrorHandler.hxx>
@@ -370,19 +371,44 @@ int IGESToBRep::IGESCurveToSequenceOfIGESCurve(
   }
   if (!curve.IsNull())
   {
-    if (curve->IsKind(STANDARD_TYPE(IGESGeom_CompositeCurve)))
+    // A composite curve that contains itself or is nested too deeply gives no curve: its other
+    // components are not added either, so that the caller does not build a part of it silently.
+    static thread_local std::vector<const Standard_Transient*> THE_COMPOSITE_PATH;
+    static thread_local bool                                   THE_IS_REFUSED = false;
+    const bool                                                 isOuter = THE_COMPOSITE_PATH.empty();
+    const int                                                  aNbBefore = sequence->Length();
+    if (isOuter)
     {
-      occ::handle<IGESGeom_CompositeCurve> comp = occ::down_cast<IGESGeom_CompositeCurve>(curve);
-      for (int i = 1; i <= comp->NbCurves(); i++)
+      THE_IS_REFUSED = false;
+    }
+    {
+      const IGESToBRep_TransferGuard::PathGuard aPath(THE_COMPOSITE_PATH, curve.get());
+      if (!aPath.IsEntered())
       {
-        occ::handle<NCollection_HSequence<occ::handle<Standard_Transient>>> tmpsequence;
-        IGESCurveToSequenceOfIGESCurve(comp->Curve(i), tmpsequence);
-        sequence->Append(tmpsequence);
+        THE_IS_REFUSED = true;
+        return sequence->Length();
+      }
+      if (curve->IsKind(STANDARD_TYPE(IGESGeom_CompositeCurve)))
+      {
+        occ::handle<IGESGeom_CompositeCurve> comp = occ::down_cast<IGESGeom_CompositeCurve>(curve);
+        for (int i = 1; i <= comp->NbCurves(); i++)
+        {
+          occ::handle<NCollection_HSequence<occ::handle<Standard_Transient>>> tmpsequence;
+          IGESCurveToSequenceOfIGESCurve(comp->Curve(i), tmpsequence);
+          sequence->Append(tmpsequence);
+        }
+      }
+      else if (IGESToBRep::IsTopoCurve(curve) && !curve->IsKind(STANDARD_TYPE(IGESGeom_Point)))
+      {
+        sequence->Append(curve);
       }
     }
-    else if (IGESToBRep::IsTopoCurve(curve) && !curve->IsKind(STANDARD_TYPE(IGESGeom_Point)))
+    if (isOuter && THE_IS_REFUSED)
     {
-      sequence->Append(curve);
+      while (sequence->Length() > aNbBefore)
+      {
+        sequence->Remove(sequence->Length());
+      }
     }
   }
   return sequence->Length();

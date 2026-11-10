@@ -27,6 +27,7 @@
 #include <MoniTool_Macros.hxx>
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESDraw_DrawingWithRotation, IGESData_IGESEntity)
 
@@ -38,9 +39,14 @@ void IGESDraw_DrawingWithRotation::Init(
   const occ::handle<NCollection_HArray1<double>>&                           allOrientationAngles,
   const occ::handle<NCollection_HArray1<occ::handle<IGESData_IGESEntity>>>& allAnnotations)
 {
-  int Len = allViews->Length();
-  if (allViews->Lower() != 1 || (allViewOrigins->Lower() != 1 || allViewOrigins->Length() != Len)
-      || (allOrientationAngles->Lower() != 1 || allOrientationAngles->Length() != Len))
+  int Len = IGESData_NonNull(allViews, "IGESDraw_DrawingWithRotation::Init")->Length();
+  if (IGESData_NonNull(allViews, "IGESDraw_DrawingWithRotation::Init")->Lower() != 1
+      || (IGESData_NonNull(allViewOrigins, "IGESDraw_DrawingWithRotation::Init")->Lower() != 1
+          || IGESData_NonNull(allViewOrigins, "IGESDraw_DrawingWithRotation::Init")->Length()
+               != Len)
+      || (IGESData_NonNull(allOrientationAngles, "IGESDraw_DrawingWithRotation::Init")->Lower() != 1
+          || IGESData_NonNull(allOrientationAngles, "IGESDraw_DrawingWithRotation::Init")->Length()
+               != Len))
   {
     throw Standard_DimensionMismatch("IGESDraw_DrawingWithRotation : Init");
   }

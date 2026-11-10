@@ -90,4 +90,5 @@ set(OCCT_IGESData_FILES
   IGESData_ViewKindEntity.hxx
   IGESData_WriterLib.hxx
   IGESData_WriterLib_0.cxx
+  IGESData_NonNull.pxx
 )

@@ -22,6 +22,7 @@
 #include <IGESDimen_WitnessLine.hxx>
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESDimen_WitnessLine, IGESData_IGESEntity)
 
@@ -31,7 +32,7 @@ void IGESDimen_WitnessLine::Init(const int                                      
                                  const double                                   aDisp,
                                  const occ::handle<NCollection_HArray1<gp_XY>>& dataPoints)
 {
-  if (dataPoints->Lower() != 1)
+  if (IGESData_NonNull(dataPoints, "IGESDimen_WitnessLine::Init")->Lower() != 1)
   {
     throw Standard_DimensionMismatch("IGESDimen_WitnessLine : Init");
   }

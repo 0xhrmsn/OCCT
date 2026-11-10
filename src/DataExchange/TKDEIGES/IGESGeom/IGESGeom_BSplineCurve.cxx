@@ -43,7 +43,9 @@ void IGESGeom_BSplineCurve::Init(const int                                      
 {
   if (!allPoles.IsNull())
   {
-    if (allKnots->Lower() != -aDegree || allKnots->Upper() != anIndex + 1 || allPoles->Lower() != 0)
+    // the knots are not read when the degree or the number of poles is not
+    if (allKnots.IsNull() || allKnots->Lower() != -aDegree || allKnots->Upper() != anIndex + 1
+        || allPoles->Lower() != 0)
     {
       throw Standard_DimensionMismatch("IGESGeom_BSplineCurve : Init");
     }

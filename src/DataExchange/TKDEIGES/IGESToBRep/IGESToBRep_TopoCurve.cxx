@@ -83,8 +83,16 @@
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Vertex.hxx>
 #include <TopoDS_Wire.hxx>
+#include <IGESToBRep_TransferGuard.pxx>
 
 #include <cstdio>
+
+namespace
+{
+//! Curves whose transfer is in progress in this thread (3D and 2D), see TransferTopoCurve()
+thread_local std::vector<const Standard_Transient*> THE_CURVE_PATH;
+thread_local std::vector<const Standard_Transient*> THE_CURVE2D_PATH;
+} // namespace
 
 // added by rln 32/12/97
 // #include <NCollection_Array1<int>.hxx>
@@ -867,6 +875,17 @@ TopoDS_Shape IGESToBRep_TopoCurve::TransferTopoCurve(const occ::handle<IGESData_
     // AddFail(start, "TopoCurve Transfer Error : Null IGESEntity");
     return res;
   }
+  // a curve made of curves (composite, boundary, curve on surface) that contains itself or is
+  // nested too deeply, or that failed to be read, is not translated
+  const IGESToBRep_TransferGuard::PathGuard aPath(THE_CURVE_PATH, start.get());
+  if (!aPath.IsEntered() || !IGESToBRep_TransferGuard::IsTranslatable(GetModel(), start))
+  {
+    Message_Msg Msg1156("IGES_1156"); // transfer failed : entity skipped
+    Msg1156.Arg("curve");
+    Msg1156.Arg(GetModel()->StringLabel(start));
+    SendFail(start, Msg1156);
+    return res;
+  }
   // S4054
   if (IGESToBRep::IsBasicCurve(start))
   {
@@ -920,6 +939,16 @@ TopoDS_Shape IGESToBRep_TopoCurve::Transfer2dTopoCurve(
     Message_Msg Msg1005("IGES_1005"); //"2d TopoCurve Transfer Error : Null IGESEntity"
     SendFail(start, Msg1005);
     //    AddFail(start, "2D TopoCurve Transfer Error : Null IGESEntity");
+    return res;
+  }
+  // as in TransferTopoCurve()
+  const IGESToBRep_TransferGuard::PathGuard aPath(THE_CURVE2D_PATH, start.get());
+  if (!aPath.IsEntered() || !IGESToBRep_TransferGuard::IsTranslatable(GetModel(), start))
+  {
+    Message_Msg Msg1156("IGES_1156"); // transfer failed : entity skipped
+    Msg1156.Arg("2d curve");
+    Msg1156.Arg(GetModel()->StringLabel(start));
+    SendFail(start, Msg1156);
     return res;
   }
   // S4054

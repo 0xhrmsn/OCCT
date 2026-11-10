@@ -25,6 +25,7 @@
 #include <gp_XYZ.hxx>
 #include <NCollection_Array1.hxx>
 #include <NCollection_HArray1.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESAppli_NodalDisplAndRot, IGESData_IGESEntity)
 
@@ -37,21 +38,39 @@ void IGESAppli_NodalDisplAndRot::Init(
   const occ::handle<IGESBasic_HArray1OfHArray1OfXYZ>&                         allRotParams,
   const occ::handle<IGESBasic_HArray1OfHArray1OfXYZ>&                         allTransParams)
 {
-  if (allNodes->Lower() != 1
-      || (allIdentifiers->Lower() != 1 || allIdentifiers->Length() != allNodes->Length())
-      || (allTransParams->Lower() != 1 || allTransParams->Length() != allNodes->Length())
-      || (allRotParams->Lower() != 1 || allRotParams->Length() != allNodes->Length()))
+  if (IGESData_NonNull(allNodes, "IGESAppli_NodalDisplAndRot::Init")->Lower() != 1
+      || (IGESData_NonNull(allIdentifiers, "IGESAppli_NodalDisplAndRot::Init")->Lower() != 1
+          || IGESData_NonNull(allIdentifiers, "IGESAppli_NodalDisplAndRot::Init")->Length()
+               != IGESData_NonNull(allNodes, "IGESAppli_NodalDisplAndRot::Init")->Length())
+      || (IGESData_NonNull(allTransParams, "IGESAppli_NodalDisplAndRot::Init")->Lower() != 1
+          || IGESData_NonNull(allTransParams, "IGESAppli_NodalDisplAndRot::Init")->Length()
+               != IGESData_NonNull(allNodes, "IGESAppli_NodalDisplAndRot::Init")->Length())
+      || (IGESData_NonNull(allRotParams, "IGESAppli_NodalDisplAndRot::Init")->Lower() != 1
+          || IGESData_NonNull(allRotParams, "IGESAppli_NodalDisplAndRot::Init")->Length()
+               != IGESData_NonNull(allNodes, "IGESAppli_NodalDisplAndRot::Init")->Length()))
   {
     throw Standard_DimensionMismatch(
       "IGESAppli_NodalDisplAndRot : Init(Lengths of arrays inconsistent)");
   }
 
-  for (int i = 1; i <= allNodes->Length(); i++)
+  for (int i = 1; i <= IGESData_NonNull(allNodes, "IGESAppli_NodalDisplAndRot::Init")->Length();
+       i++)
   {
-    occ::handle<NCollection_HArray1<gp_XYZ>> temp1 = allTransParams->Value(i);
-    occ::handle<NCollection_HArray1<gp_XYZ>> temp2 = allRotParams->Value(i);
-    if ((temp1->Lower() != 1 || temp1->Length() != allNotes->Length())
-        || (temp2->Lower() != 1 || temp2->Length() != allNotes->Length()))
+    occ::handle<NCollection_HArray1<gp_XYZ>> temp1 =
+      IGESData_NonNull(allTransParams, "IGESAppli_NodalDisplAndRot::Init")->Value(i);
+    occ::handle<NCollection_HArray1<gp_XYZ>> temp2 =
+      IGESData_NonNull(allRotParams, "IGESAppli_NodalDisplAndRot::Init")->Value(i);
+    // the lists of a node are not created when the number of cases is not read (damaged file)
+    if (temp1.IsNull() || temp2.IsNull())
+    {
+      throw Standard_DimensionMismatch("IGESAppli_NodalDisplAndRot : Init");
+    }
+    if ((temp1->Lower() != 1
+         || temp1->Length()
+              != IGESData_NonNull(allNotes, "IGESAppli_NodalDisplAndRot::Init")->Length())
+        || (temp2->Lower() != 1
+            || temp2->Length()
+                 != IGESData_NonNull(allNotes, "IGESAppli_NodalDisplAndRot::Init")->Length()))
     {
       throw Standard_DimensionMismatch(
         "IGESAppli_NodalDisplAndRot: Init(No. of Param per Node != Nbcases)");

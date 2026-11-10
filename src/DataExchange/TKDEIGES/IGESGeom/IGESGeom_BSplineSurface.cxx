@@ -45,7 +45,9 @@ void IGESGeom_BSplineSurface::Init(const int                                    
                                    const double                                    aVmin,
                                    const double                                    aVmax)
 {
-  if (allWeights->RowLength() != allPoles->RowLength()
+  // the lists are not read when the degrees or the numbers of poles are not
+  if (allKnotsU.IsNull() || allKnotsV.IsNull() || allWeights.IsNull() || allPoles.IsNull()
+      || allWeights->RowLength() != allPoles->RowLength()
       || allWeights->ColLength() != allPoles->ColLength())
   {
     throw Standard_DimensionMismatch("IGESGeom_BSplineSurface : Init");

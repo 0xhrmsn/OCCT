@@ -20,6 +20,7 @@
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
 #include <TCollection_HAsciiString.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESAppli_FlowLineSpec, IGESData_IGESEntity)
 
@@ -28,7 +29,7 @@ IGESAppli_FlowLineSpec::IGESAppli_FlowLineSpec() = default;
 void IGESAppli_FlowLineSpec::Init(
   const occ::handle<NCollection_HArray1<occ::handle<TCollection_HAsciiString>>>& allProperties)
 {
-  if (allProperties->Lower() != 1)
+  if (IGESData_NonNull(allProperties, "IGESAppli_FlowLineSpec::Init")->Lower() != 1)
   {
     throw Standard_DimensionMismatch("IGESAppli_FlowLineSpec : Init");
   }

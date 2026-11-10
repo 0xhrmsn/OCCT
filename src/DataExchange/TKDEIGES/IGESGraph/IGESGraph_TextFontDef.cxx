@@ -21,6 +21,7 @@
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
 #include <TCollection_HAsciiString.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESGraph_TextFontDef, IGESData_IGESEntity)
 
@@ -40,13 +41,20 @@ void IGESGraph_TextFontDef::Init(
   const occ::handle<IGESBasic_HArray1OfHArray1OfInteger>& allMovePenToX,
   const occ::handle<IGESBasic_HArray1OfHArray1OfInteger>& allMovePenToY)
 {
-  int Len = allASCIICodes->Length();
-  if (allASCIICodes->Lower() != 1 || (allNextCharX->Lower() != 1 || allNextCharX->Length() != Len)
-      || (allNextCharY->Lower() != 1 || allNextCharY->Length() != Len)
-      || (allPenMotions->Lower() != 1 || allPenMotions->Length() != Len)
-      || (allPenFlags->Lower() != 1 || allPenFlags->Length() != Len)
-      || (allMovePenToX->Lower() != 1 || allMovePenToX->Length() != Len)
-      || (allMovePenToY->Lower() != 1 || allMovePenToY->Length() != Len))
+  int Len = IGESData_NonNull(allASCIICodes, "IGESGraph_TextFontDef::Init")->Length();
+  if (IGESData_NonNull(allASCIICodes, "IGESGraph_TextFontDef::Init")->Lower() != 1
+      || (IGESData_NonNull(allNextCharX, "IGESGraph_TextFontDef::Init")->Lower() != 1
+          || IGESData_NonNull(allNextCharX, "IGESGraph_TextFontDef::Init")->Length() != Len)
+      || (IGESData_NonNull(allNextCharY, "IGESGraph_TextFontDef::Init")->Lower() != 1
+          || IGESData_NonNull(allNextCharY, "IGESGraph_TextFontDef::Init")->Length() != Len)
+      || (IGESData_NonNull(allPenMotions, "IGESGraph_TextFontDef::Init")->Lower() != 1
+          || IGESData_NonNull(allPenMotions, "IGESGraph_TextFontDef::Init")->Length() != Len)
+      || (IGESData_NonNull(allPenFlags, "IGESGraph_TextFontDef::Init")->Lower() != 1
+          || IGESData_NonNull(allPenFlags, "IGESGraph_TextFontDef::Init")->Length() != Len)
+      || (IGESData_NonNull(allMovePenToX, "IGESGraph_TextFontDef::Init")->Lower() != 1
+          || IGESData_NonNull(allMovePenToX, "IGESGraph_TextFontDef::Init")->Length() != Len)
+      || (IGESData_NonNull(allMovePenToY, "IGESGraph_TextFontDef::Init")->Lower() != 1
+          || IGESData_NonNull(allMovePenToY, "IGESGraph_TextFontDef::Init")->Length() != Len))
   {
     throw Standard_DimensionMismatch("IGESGraph_TextFontDef : Init");
   }

@@ -21,6 +21,7 @@
 #include <IGESDefs_TabularData.hxx>
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESAppli_NodalConstraint, IGESData_IGESEntity)
 
@@ -31,7 +32,7 @@ void IGESAppli_NodalConstraint::Init(
   const occ::handle<IGESAppli_Node>&                                         aNode,
   const occ::handle<NCollection_HArray1<occ::handle<IGESDefs_TabularData>>>& allTabData)
 {
-  if (allTabData->Lower() != 1)
+  if (IGESData_NonNull(allTabData, "IGESAppli_NodalConstraint::Init")->Lower() != 1)
   {
     throw Standard_DimensionMismatch("IGESAppli_NodalConstraint : Init");
   }

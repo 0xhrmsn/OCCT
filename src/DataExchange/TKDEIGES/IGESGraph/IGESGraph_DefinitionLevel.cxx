@@ -19,6 +19,7 @@
 #include <IGESGraph_DefinitionLevel.hxx>
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESGraph_DefinitionLevel, IGESData_LevelListEntity)
 
@@ -26,7 +27,7 @@ IGESGraph_DefinitionLevel::IGESGraph_DefinitionLevel() = default;
 
 void IGESGraph_DefinitionLevel::Init(const occ::handle<NCollection_HArray1<int>>& allLevelNumbers)
 {
-  if (allLevelNumbers->Lower() != 1)
+  if (IGESData_NonNull(allLevelNumbers, "IGESGraph_DefinitionLevel::Init")->Lower() != 1)
   {
     throw Standard_DimensionMismatch("IGESGraph_DefinitionLevel : Init");
   }

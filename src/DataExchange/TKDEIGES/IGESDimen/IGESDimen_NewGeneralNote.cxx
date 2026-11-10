@@ -23,6 +23,7 @@
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
 #include <TCollection_HAsciiString.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESDimen_NewGeneralNote, IGESData_IGESEntity)
 
@@ -56,26 +57,46 @@ void IGESDimen_NewGeneralNote::Init(
   const occ::handle<NCollection_HArray1<gp_XYZ>>&                                startPoints,
   const occ::handle<NCollection_HArray1<occ::handle<TCollection_HAsciiString>>>& texts)
 {
-  int num = nbChars->Length();
+  int num = IGESData_NonNull(nbChars, "IGESDimen_NewGeneralNote::Init")->Length();
 
-  if (nbChars->Lower() != 1 || (charDisplays->Lower() != 1 || charDisplays->Length() != num)
-      || (charWidths->Lower() != 1 || charWidths->Length() != num)
-      || (charHeights->Lower() != 1 || charHeights->Length() != num)
-      || (interCharSpc->Lower() != 1 || interCharSpc->Length() != num)
-      || (interLineSpc->Lower() != 1 || interLineSpc->Length() != num)
-      || (fontStyles->Lower() != 1 || fontStyles->Length() != num)
-      || (charAngles->Lower() != 1 || charAngles->Length() != num)
-      || (controlCodeStrings->Lower() != 1 || controlCodeStrings->Length() != num)
-      || (boxWidths->Lower() != 1 || boxWidths->Length() != num)
-      || (boxHeights->Lower() != 1 || boxHeights->Length() != num)
-      || (charSetCodes->Lower() != 1 || charSetCodes->Length() != num)
-      || (charSetEntities->Lower() != 1 || charSetEntities->Length() != num)
-      || (slAngles->Lower() != 1 || slAngles->Length() != num)
-      || (rotAngles->Lower() != 1 || rotAngles->Length() != num)
-      || (mirrorFlags->Lower() != 1 || mirrorFlags->Length() != num)
-      || (rotateFlags->Lower() != 1 || rotateFlags->Length() != num)
-      || (startPoints->Lower() != 1 || startPoints->Length() != num)
-      || (texts->Lower() != 1 || texts->Length() != num))
+  if (IGESData_NonNull(nbChars, "IGESDimen_NewGeneralNote::Init")->Lower() != 1
+      || (IGESData_NonNull(charDisplays, "IGESDimen_NewGeneralNote::Init")->Lower() != 1
+          || IGESData_NonNull(charDisplays, "IGESDimen_NewGeneralNote::Init")->Length() != num)
+      || (IGESData_NonNull(charWidths, "IGESDimen_NewGeneralNote::Init")->Lower() != 1
+          || IGESData_NonNull(charWidths, "IGESDimen_NewGeneralNote::Init")->Length() != num)
+      || (IGESData_NonNull(charHeights, "IGESDimen_NewGeneralNote::Init")->Lower() != 1
+          || IGESData_NonNull(charHeights, "IGESDimen_NewGeneralNote::Init")->Length() != num)
+      || (IGESData_NonNull(interCharSpc, "IGESDimen_NewGeneralNote::Init")->Lower() != 1
+          || IGESData_NonNull(interCharSpc, "IGESDimen_NewGeneralNote::Init")->Length() != num)
+      || (IGESData_NonNull(interLineSpc, "IGESDimen_NewGeneralNote::Init")->Lower() != 1
+          || IGESData_NonNull(interLineSpc, "IGESDimen_NewGeneralNote::Init")->Length() != num)
+      || (IGESData_NonNull(fontStyles, "IGESDimen_NewGeneralNote::Init")->Lower() != 1
+          || IGESData_NonNull(fontStyles, "IGESDimen_NewGeneralNote::Init")->Length() != num)
+      || (IGESData_NonNull(charAngles, "IGESDimen_NewGeneralNote::Init")->Lower() != 1
+          || IGESData_NonNull(charAngles, "IGESDimen_NewGeneralNote::Init")->Length() != num)
+      || (IGESData_NonNull(controlCodeStrings, "IGESDimen_NewGeneralNote::Init")->Lower() != 1
+          || IGESData_NonNull(controlCodeStrings, "IGESDimen_NewGeneralNote::Init")->Length()
+               != num)
+      || (IGESData_NonNull(boxWidths, "IGESDimen_NewGeneralNote::Init")->Lower() != 1
+          || IGESData_NonNull(boxWidths, "IGESDimen_NewGeneralNote::Init")->Length() != num)
+      || (IGESData_NonNull(boxHeights, "IGESDimen_NewGeneralNote::Init")->Lower() != 1
+          || IGESData_NonNull(boxHeights, "IGESDimen_NewGeneralNote::Init")->Length() != num)
+      || (IGESData_NonNull(charSetCodes, "IGESDimen_NewGeneralNote::Init")->Lower() != 1
+          || IGESData_NonNull(charSetCodes, "IGESDimen_NewGeneralNote::Init")->Length() != num)
+      || (IGESData_NonNull(charSetEntities, "IGESDimen_NewGeneralNote::Init")->Lower() != 1
+          || IGESData_NonNull(charSetEntities, "IGESDimen_NewGeneralNote::Init")->Length() != num)
+      || (IGESData_NonNull(slAngles, "IGESDimen_NewGeneralNote::Init")->Lower() != 1
+          || IGESData_NonNull(slAngles, "IGESDimen_NewGeneralNote::Init")->Length() != num)
+      || (IGESData_NonNull(rotAngles, "IGESDimen_NewGeneralNote::Init")->Lower() != 1
+          || IGESData_NonNull(rotAngles, "IGESDimen_NewGeneralNote::Init")->Length() != num)
+      || (IGESData_NonNull(mirrorFlags, "IGESDimen_NewGeneralNote::Init")->Lower() != 1
+          || IGESData_NonNull(mirrorFlags, "IGESDimen_NewGeneralNote::Init")->Length() != num)
+      || (IGESData_NonNull(rotateFlags, "IGESDimen_NewGeneralNote::Init")->Lower() != 1
+          || IGESData_NonNull(rotateFlags, "IGESDimen_NewGeneralNote::Init")->Length() != num)
+      || (IGESData_NonNull(startPoints, "IGESDimen_NewGeneralNote::Init")->Lower() != 1
+          || IGESData_NonNull(startPoints, "IGESDimen_NewGeneralNote::Init")->Length() != num)
+      || (IGESData_NonNull(texts, "IGESDimen_NewGeneralNote::Init")->Lower() != 1
+          || IGESData_NonNull(texts, "IGESDimen_NewGeneralNote::Init")->Length() != num))
   {
     throw Standard_DimensionMismatch("IGESDimen_GeneralNote : Init");
   }

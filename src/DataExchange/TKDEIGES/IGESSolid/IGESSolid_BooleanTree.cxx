@@ -19,6 +19,7 @@
 #include <IGESSolid_BooleanTree.hxx>
 #include <Standard_DimensionError.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESSolid_BooleanTree, IGESData_IGESEntity)
 
@@ -28,8 +29,10 @@ void IGESSolid_BooleanTree::Init(
   const occ::handle<NCollection_HArray1<occ::handle<IGESData_IGESEntity>>>& operands,
   const occ::handle<NCollection_HArray1<int>>&                              operations)
 {
-  if (operands->Lower() != 1 || operations->Lower() != 1
-      || operands->Length() != operations->Length())
+  if (IGESData_NonNull(operands, "IGESSolid_BooleanTree::Init")->Lower() != 1
+      || IGESData_NonNull(operations, "IGESSolid_BooleanTree::Init")->Lower() != 1
+      || IGESData_NonNull(operands, "IGESSolid_BooleanTree::Init")->Length()
+           != IGESData_NonNull(operations, "IGESSolid_BooleanTree::Init")->Length())
   {
     throw Standard_DimensionError("IGESSolid_BooleanTree : Init");
   }

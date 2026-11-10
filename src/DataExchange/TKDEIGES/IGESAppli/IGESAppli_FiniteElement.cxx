@@ -22,6 +22,7 @@
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
 #include <TCollection_HAsciiString.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESAppli_FiniteElement, IGESData_IGESEntity)
 
@@ -32,7 +33,7 @@ void IGESAppli_FiniteElement::Init(
   const occ::handle<NCollection_HArray1<occ::handle<IGESAppli_Node>>>& allNodes,
   const occ::handle<TCollection_HAsciiString>&                         aName)
 {
-  if (allNodes->Lower() != 1)
+  if (IGESData_NonNull(allNodes, "IGESAppli_FiniteElement::Init")->Lower() != 1)
   {
     throw Standard_DimensionMismatch("IGESAppli_FiniteElement : Init");
   }

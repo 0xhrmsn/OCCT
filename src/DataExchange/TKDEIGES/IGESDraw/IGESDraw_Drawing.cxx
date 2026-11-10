@@ -27,6 +27,7 @@
 #include <MoniTool_Macros.hxx>
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESDraw_Drawing, IGESData_IGESEntity)
 
@@ -40,8 +41,9 @@ void IGESDraw_Drawing::Init(
   if (!allViews.IsNull())
   {
     int  Len  = allViews->Length();
-    bool Flag = (allViewOrigins->Length() == Len);
-    if (!Flag || allViews->Lower() != 1 || allViewOrigins->Lower() != 1)
+    bool Flag = (IGESData_NonNull(allViewOrigins, "IGESDraw_Drawing::Init")->Length() == Len);
+    if (!Flag || allViews->Lower() != 1
+        || IGESData_NonNull(allViewOrigins, "IGESDraw_Drawing::Init")->Lower() != 1)
     {
       throw Standard_DimensionMismatch("IGESDraw_Drawing : Init");
     }

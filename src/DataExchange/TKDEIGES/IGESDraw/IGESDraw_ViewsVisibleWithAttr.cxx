@@ -20,6 +20,7 @@
 #include <IGESGraph_Color.hxx>
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESDraw_ViewsVisibleWithAttr, IGESData_ViewKindEntity)
 
@@ -40,11 +41,24 @@ void IGESDraw_ViewsVisibleWithAttr::Init(
   {
     int Exp = allViewEntities->Length();
     if (allViewEntities->Lower() != 1
-        || (allLineFonts->Lower() != 1 || allLineFonts->Length() != Exp)
-        || (allColorValues->Lower() != 1 || allColorValues->Length() != Exp)
-        || (allLineWeights->Lower() != 1 || allLineWeights->Length() != Exp)
-        || (allLineDefinitions->Lower() != 1 || allLineDefinitions->Length() != Exp)
-        || (allColorDefinitions->Lower() != 1 || allColorDefinitions->Length() != Exp))
+        || (IGESData_NonNull(allLineFonts, "IGESDraw_ViewsVisibleWithAttr::Init")->Lower() != 1
+            || IGESData_NonNull(allLineFonts, "IGESDraw_ViewsVisibleWithAttr::Init")->Length()
+                 != Exp)
+        || (IGESData_NonNull(allColorValues, "IGESDraw_ViewsVisibleWithAttr::Init")->Lower() != 1
+            || IGESData_NonNull(allColorValues, "IGESDraw_ViewsVisibleWithAttr::Init")->Length()
+                 != Exp)
+        || (IGESData_NonNull(allLineWeights, "IGESDraw_ViewsVisibleWithAttr::Init")->Lower() != 1
+            || IGESData_NonNull(allLineWeights, "IGESDraw_ViewsVisibleWithAttr::Init")->Length()
+                 != Exp)
+        || (IGESData_NonNull(allLineDefinitions, "IGESDraw_ViewsVisibleWithAttr::Init")->Lower()
+              != 1
+            || IGESData_NonNull(allLineDefinitions, "IGESDraw_ViewsVisibleWithAttr::Init")->Length()
+                 != Exp)
+        || (IGESData_NonNull(allColorDefinitions, "IGESDraw_ViewsVisibleWithAttr::Init")->Lower()
+              != 1
+            || IGESData_NonNull(allColorDefinitions, "IGESDraw_ViewsVisibleWithAttr::Init")
+                   ->Length()
+                 != Exp))
     {
       throw Standard_DimensionMismatch("IGESDraw_ViewsVisibleWithAttr : Init");
     }

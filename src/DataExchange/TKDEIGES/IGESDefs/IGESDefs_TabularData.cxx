@@ -24,6 +24,7 @@
 #include <Standard_Type.hxx>
 #include <NCollection_Array1.hxx>
 #include <NCollection_HArray1.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESDefs_TabularData, IGESData_IGESEntity)
 
@@ -38,9 +39,13 @@ void IGESDefs_TabularData::Init(const int nbProps,
                                 const occ::handle<IGESBasic_HArray1OfHArray1OfReal>& valuesInd,
                                 const occ::handle<IGESBasic_HArray1OfHArray1OfReal>& valuesDep)
 {
-  int num = typesInd->Length();
-  if (typesInd->Lower() != 1 || nbValuesInd->Lower() != 1 || nbValuesInd->Length() != num
-      || valuesInd->Lower() != 1 || valuesInd->Length() != num || valuesDep->Lower() != 1)
+  int num = IGESData_NonNull(typesInd, "IGESDefs_TabularData::Init")->Length();
+  if (IGESData_NonNull(typesInd, "IGESDefs_TabularData::Init")->Lower() != 1
+      || IGESData_NonNull(nbValuesInd, "IGESDefs_TabularData::Init")->Lower() != 1
+      || IGESData_NonNull(nbValuesInd, "IGESDefs_TabularData::Init")->Length() != num
+      || IGESData_NonNull(valuesInd, "IGESDefs_TabularData::Init")->Lower() != 1
+      || IGESData_NonNull(valuesInd, "IGESDefs_TabularData::Init")->Length() != num
+      || IGESData_NonNull(valuesDep, "IGESDefs_TabularData::Init")->Lower() != 1)
   {
     throw Standard_DimensionMismatch("IGESDefs_TabularData : Init");
   }

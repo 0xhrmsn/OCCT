@@ -20,6 +20,7 @@
 #include <IGESSolid_VertexList.hxx>
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESSolid_EdgeList, IGESData_IGESEntity)
 
@@ -34,11 +35,15 @@ void IGESSolid_EdgeList::Init(
 {
   int nb = (Curves.IsNull() ? 0 : Curves->Length());
 
-  if (nb == 0 || Curves->Lower() != 1 || startVertexList->Lower() != 1
-      || startVertexList->Length() != nb || startVertexIndex->Lower() != 1
-      || startVertexIndex->Length() != nb || endVertexList->Lower() != 1
-      || endVertexList->Length() != nb || endVertexIndex->Lower() != 1
-      || endVertexIndex->Length() != nb)
+  if (nb == 0 || Curves->Lower() != 1
+      || IGESData_NonNull(startVertexList, "IGESSolid_EdgeList::Init")->Lower() != 1
+      || IGESData_NonNull(startVertexList, "IGESSolid_EdgeList::Init")->Length() != nb
+      || IGESData_NonNull(startVertexIndex, "IGESSolid_EdgeList::Init")->Lower() != 1
+      || IGESData_NonNull(startVertexIndex, "IGESSolid_EdgeList::Init")->Length() != nb
+      || IGESData_NonNull(endVertexList, "IGESSolid_EdgeList::Init")->Lower() != 1
+      || IGESData_NonNull(endVertexList, "IGESSolid_EdgeList::Init")->Length() != nb
+      || IGESData_NonNull(endVertexIndex, "IGESSolid_EdgeList::Init")->Lower() != 1
+      || IGESData_NonNull(endVertexIndex, "IGESSolid_EdgeList::Init")->Length() != nb)
   {
     throw Standard_DimensionError("IGESSolid_EdgeList : Init");
   }

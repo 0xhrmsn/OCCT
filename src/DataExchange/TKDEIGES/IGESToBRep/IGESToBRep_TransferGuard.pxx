@@ -1,0 +1,94 @@
+// Copyright (c) 2026 OPEN CASCADE SAS
+//
+// This file is part of Open CASCADE Technology software library.
+//
+// This library is free software; you can redistribute it and/or modify it under
+// the terms of the GNU Lesser General Public License version 2.1 as published
+// by the Free Software Foundation, with special exception defined in the file
+// OCCT_LGPL_EXCEPTION.txt. Consult the file LICENSE_LGPL_21.txt included in OCCT
+// distribution for complete text of the license and disclaimer of any warranty.
+//
+// Alternatively, this file may be used under the terms of Open CASCADE
+// commercial license or contractual agreement.
+
+#ifndef _IGESToBRep_TransferGuard_HeaderFile
+#define _IGESToBRep_TransferGuard_HeaderFile
+
+#include <IGESData_IGESEntity.hxx>
+#include <IGESData_IGESModel.hxx>
+#include <Interface_Static.hxx>
+
+#include <algorithm>
+#include <vector>
+
+//! Guards of the translation of the entities of an IGES file from an untrusted source.
+namespace IGESToBRep_TransferGuard
+{
+
+//! Nesting allowed for groups, subfigures, composite curves and surfaces made of other ones,
+//! all kinds together.
+constexpr int THE_MAX_NESTING = 100;
+
+//! Number of entities entered by all the guards of this thread.
+inline thread_local int THE_NESTING = 0;
+
+//! Records an entity in a path of entities being translated in this thread. A damaged file can
+//! make an entity contain itself, which recursed until the stack overflowed, or nest entities
+//! deeply enough to overflow it (the paths of different kinds alternate, e.g. a curve on a
+//! trimmed surface bounded by curves on surfaces, so the depth is counted for all of them): such
+//! an entity is not entered (IsEntered() is false).
+class PathGuard
+{
+public:
+  PathGuard(std::vector<const Standard_Transient*>& thePath, const Standard_Transient* theEntity)
+      : myPath(thePath),
+        myIsEntered(THE_NESTING < THE_MAX_NESTING
+                    && std::find(thePath.begin(), thePath.end(), theEntity) == thePath.end())
+  {
+    if (myIsEntered)
+    {
+      myPath.push_back(theEntity);
+      ++THE_NESTING;
+    }
+  }
+
+  ~PathGuard()
+  {
+    if (myIsEntered)
+    {
+      myPath.pop_back();
+      --THE_NESTING;
+    }
+  }
+
+  bool IsEntered() const { return myIsEntered; }
+
+  PathGuard(const PathGuard&)            = delete;
+  PathGuard& operator=(const PathGuard&) = delete;
+
+private:
+  std::vector<const Standard_Transient*>& myPath;
+  const bool                              myIsEntered;
+};
+
+//! Returns false for a null entity, and, when read.iges.faulty.entities is off, for an entity
+//! that failed to be read: its lists can be unset or hold values that were not read. Such an
+//! entity is not translated, like the roots in IGESToBRep_Actor; the shape that refers to it
+//! reports the missing part.
+inline bool IsTranslatable(const occ::handle<IGESData_IGESModel>&  theModel,
+                           const occ::handle<IGESData_IGESEntity>& theEntity)
+{
+  if (theEntity.IsNull())
+  {
+    return false;
+  }
+  if (theModel.IsNull() || Interface_Static::IVal("read.iges.faulty.entities") != 0)
+  {
+    return true;
+  }
+  return !theModel->IsErrorEntity(theModel->Number(theEntity));
+}
+
+} // namespace IGESToBRep_TransferGuard
+
+#endif // _IGESToBRep_TransferGuard_HeaderFile

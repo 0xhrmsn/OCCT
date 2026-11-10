@@ -23,6 +23,7 @@
 #include <MoniTool_Macros.hxx>
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESDraw_LabelDisplay, IGESData_LabelDisplayEntity)
 
@@ -35,11 +36,16 @@ void IGESDraw_LabelDisplay::Init(
   const occ::handle<NCollection_HArray1<int>>&                                  allLabelLevels,
   const occ::handle<NCollection_HArray1<occ::handle<IGESData_IGESEntity>>>& allDisplayedEntities)
 {
-  int Ln = allViews->Length();
-  if (allViews->Lower() != 1 || (allTextLocations->Lower() != 1 || allTextLocations->Length() != Ln)
-      || (allLeaderEntities->Lower() != 1 || allLeaderEntities->Length() != Ln)
-      || (allLabelLevels->Lower() != 1 || allLabelLevels->Length() != Ln)
-      || (allDisplayedEntities->Lower() != 1 || allDisplayedEntities->Length() != Ln))
+  int Ln = IGESData_NonNull(allViews, "IGESDraw_LabelDisplay::Init")->Length();
+  if (IGESData_NonNull(allViews, "IGESDraw_LabelDisplay::Init")->Lower() != 1
+      || (IGESData_NonNull(allTextLocations, "IGESDraw_LabelDisplay::Init")->Lower() != 1
+          || IGESData_NonNull(allTextLocations, "IGESDraw_LabelDisplay::Init")->Length() != Ln)
+      || (IGESData_NonNull(allLeaderEntities, "IGESDraw_LabelDisplay::Init")->Lower() != 1
+          || IGESData_NonNull(allLeaderEntities, "IGESDraw_LabelDisplay::Init")->Length() != Ln)
+      || (IGESData_NonNull(allLabelLevels, "IGESDraw_LabelDisplay::Init")->Lower() != 1
+          || IGESData_NonNull(allLabelLevels, "IGESDraw_LabelDisplay::Init")->Length() != Ln)
+      || (IGESData_NonNull(allDisplayedEntities, "IGESDraw_LabelDisplay::Init")->Lower() != 1
+          || IGESData_NonNull(allDisplayedEntities, "IGESDraw_LabelDisplay::Init")->Length() != Ln))
   {
     throw Standard_DimensionMismatch("IGESDraw_LabelDisplay : Init");
   }

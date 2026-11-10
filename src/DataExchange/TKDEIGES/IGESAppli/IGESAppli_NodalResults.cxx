@@ -22,6 +22,7 @@
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_OutOfRange.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESAppli_NodalResults, IGESData_IGESEntity)
 
@@ -37,9 +38,14 @@ void IGESAppli_NodalResults::Init(
   const occ::handle<NCollection_HArray1<occ::handle<IGESAppli_Node>>>& allNodes,
   const occ::handle<NCollection_HArray2<double>>&                      allData)
 {
-  if (allNodes->Lower() != 1 || allNodeIdentifiers->Lower() != 1
-      || allNodes->Length() != allNodeIdentifiers->Length() || allData->LowerCol() != 1
-      || allData->LowerRow() != 1 || allNodes->Length() != allData->UpperRow())
+  if (IGESData_NonNull(allNodes, "IGESAppli_NodalResults::Init")->Lower() != 1
+      || IGESData_NonNull(allNodeIdentifiers, "IGESAppli_NodalResults::Init")->Lower() != 1
+      || IGESData_NonNull(allNodes, "IGESAppli_NodalResults::Init")->Length()
+           != IGESData_NonNull(allNodeIdentifiers, "IGESAppli_NodalResults::Init")->Length()
+      || IGESData_NonNull(allData, "IGESAppli_NodalResults::Init")->LowerCol() != 1
+      || IGESData_NonNull(allData, "IGESAppli_NodalResults::Init")->LowerRow() != 1
+      || IGESData_NonNull(allNodes, "IGESAppli_NodalResults::Init")->Length()
+           != IGESData_NonNull(allData, "IGESAppli_NodalResults::Init")->UpperRow())
   {
     throw Standard_DimensionMismatch("IGESAppli_NodalResults : Init");
   }

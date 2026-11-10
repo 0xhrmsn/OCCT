@@ -23,6 +23,7 @@
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
 #include <TCollection_HAsciiString.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESAppli_PipingFlow, IGESData_IGESEntity)
 
@@ -38,11 +39,16 @@ void IGESAppli_PipingFlow::Init(
   const occ::handle<NCollection_HArray1<occ::handle<IGESGraph_TextDisplayTemplate>>>& allTextDisps,
   const occ::handle<NCollection_HArray1<occ::handle<IGESData_IGESEntity>>>& allContFlowAssocs)
 {
-  int num = allFlowAssocs->Length();
-  if (allFlowAssocs->Lower() != 1 || allConnectPoints->Lower() != 1
-      || allConnectPoints->Length() != num || allJoins->Lower() != 1 || allJoins->Length() != num
-      || allFlowNames->Lower() != 1 || allFlowNames->Length() != num
-      || allContFlowAssocs->Lower() != 1 || allContFlowAssocs->Length() != num)
+  int num = IGESData_NonNull(allFlowAssocs, "IGESAppli_PipingFlow::Init")->Length();
+  if (IGESData_NonNull(allFlowAssocs, "IGESAppli_PipingFlow::Init")->Lower() != 1
+      || IGESData_NonNull(allConnectPoints, "IGESAppli_PipingFlow::Init")->Lower() != 1
+      || IGESData_NonNull(allConnectPoints, "IGESAppli_PipingFlow::Init")->Length() != num
+      || IGESData_NonNull(allJoins, "IGESAppli_PipingFlow::Init")->Lower() != 1
+      || IGESData_NonNull(allJoins, "IGESAppli_PipingFlow::Init")->Length() != num
+      || IGESData_NonNull(allFlowNames, "IGESAppli_PipingFlow::Init")->Lower() != 1
+      || IGESData_NonNull(allFlowNames, "IGESAppli_PipingFlow::Init")->Length() != num
+      || IGESData_NonNull(allContFlowAssocs, "IGESAppli_PipingFlow::Init")->Lower() != 1
+      || IGESData_NonNull(allContFlowAssocs, "IGESAppli_PipingFlow::Init")->Length() != num)
   {
     throw Standard_DimensionMismatch("IGESAppli_PipingFlow : Init");
   }

@@ -47,6 +47,13 @@ void IGESAppli_ElementResults::Init(
 {
   // raises exception if sizes are not consistent, (lower = 1 too)
   // but how to check is not clear ??
+  // the lists are not created when the number of elements is not read (damaged file)
+  if (allElementIdents.IsNull() || allFiniteElems.IsNull() || allTopTypes.IsNull()
+      || nbLayers.IsNull() || allDataLayerFlags.IsNull() || allnbResDataLocs.IsNull()
+      || allResDataLocs.IsNull() || allResults.IsNull())
+  {
+    throw Standard_DimensionMismatch("IGESAppli_ElementsResults : Init");
+  }
   int num = allElementIdents->Length();
   if (allElementIdents->Lower() != 1 || allFiniteElems->Lower() != 1
       || allFiniteElems->Upper() != num || allTopTypes->Lower() != 1 || allTopTypes->Upper() != num
@@ -61,6 +68,11 @@ void IGESAppli_ElementResults::Init(
   {
     int nl  = nbLayers->Value(i);
     int nrl = allnbResDataLocs->Value(i);
+    // the list of an element is null when it is not read
+    if (allResDataLocs->Value(i).IsNull() || allResults->Value(i).IsNull())
+    {
+      throw Standard_DimensionMismatch("IGESAppli_ElementsResults : Init");
+    }
     if (allResDataLocs->Value(i)->Lower() != 1 || allResDataLocs->Value(i)->Upper() != nrl)
     {
       throw Standard_DimensionMismatch("IGESAppli_ElementsResults : DataLoc");

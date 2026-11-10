@@ -20,6 +20,7 @@
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
 #include <TCollection_HAsciiString.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESGraph_LineFontDefPattern, IGESData_LineFontEntity)
 
@@ -31,7 +32,7 @@ void IGESGraph_LineFontDefPattern::Init(
   const occ::handle<NCollection_HArray1<double>>& allSegLength,
   const occ::handle<TCollection_HAsciiString>&    aPattern)
 {
-  if (allSegLength->Lower() != 1)
+  if (IGESData_NonNull(allSegLength, "IGESGraph_LineFontDefPattern::Init")->Lower() != 1)
   {
     throw Standard_DimensionMismatch("IGESGraph_LineFontDefPattern : Init");
   }

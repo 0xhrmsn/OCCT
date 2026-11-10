@@ -20,6 +20,7 @@
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
 #include <TCollection_HAsciiString.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESDefs_UnitsData, IGESData_IGESEntity)
 
@@ -30,9 +31,12 @@ void IGESDefs_UnitsData::Init(
   const occ::handle<NCollection_HArray1<occ::handle<TCollection_HAsciiString>>>& unitValues,
   const occ::handle<NCollection_HArray1<double>>&                                unitScales)
 {
-  int length = unitTypes->Length();
-  if (unitTypes->Lower() != 1 || (unitValues->Lower() != 1 || unitValues->Length() != length)
-      || (unitScales->Lower() != 1 || unitScales->Length() != length))
+  int length = IGESData_NonNull(unitTypes, "IGESDefs_UnitsData::Init")->Length();
+  if (IGESData_NonNull(unitTypes, "IGESDefs_UnitsData::Init")->Lower() != 1
+      || (IGESData_NonNull(unitValues, "IGESDefs_UnitsData::Init")->Lower() != 1
+          || IGESData_NonNull(unitValues, "IGESDefs_UnitsData::Init")->Length() != length)
+      || (IGESData_NonNull(unitScales, "IGESDefs_UnitsData::Init")->Lower() != 1
+          || IGESData_NonNull(unitScales, "IGESDefs_UnitsData::Init")->Length() != length))
   {
     throw Standard_DimensionMismatch("IGESDefs_UnitsData : Init");
   }

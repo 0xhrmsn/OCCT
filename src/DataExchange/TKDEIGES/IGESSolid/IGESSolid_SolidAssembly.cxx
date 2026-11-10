@@ -19,6 +19,7 @@
 #include <IGESSolid_SolidAssembly.hxx>
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESSolid_SolidAssembly, IGESData_IGESEntity)
 
@@ -28,7 +29,10 @@ void IGESSolid_SolidAssembly::Init(
   const occ::handle<NCollection_HArray1<occ::handle<IGESData_IGESEntity>>>&           Items,
   const occ::handle<NCollection_HArray1<occ::handle<IGESGeom_TransformationMatrix>>>& Matrices)
 {
-  if (Items->Lower() != 1 || Matrices->Lower() != 1 || Items->Length() != Matrices->Length())
+  if (IGESData_NonNull(Items, "IGESSolid_SolidAssembly::Init")->Lower() != 1
+      || IGESData_NonNull(Matrices, "IGESSolid_SolidAssembly::Init")->Lower() != 1
+      || IGESData_NonNull(Items, "IGESSolid_SolidAssembly::Init")->Length()
+           != IGESData_NonNull(Matrices, "IGESSolid_SolidAssembly::Init")->Length())
   {
     throw Standard_DimensionError("IGESSolid_SolidAssembly : Init");
   }

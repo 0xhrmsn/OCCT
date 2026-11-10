@@ -28,6 +28,7 @@
 #include <Standard_Transient.hxx>
 #include <Standard_Type.hxx>
 #include <Standard_Integer.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESDefs_AttributeDef, IGESData_IGESEntity)
 
@@ -44,10 +45,12 @@ void IGESDefs_AttributeDef::Init(
   const occ::handle<NCollection_HArray1<occ::handle<Standard_Transient>>>& attrValues,
   const occ::handle<IGESDefs_HArray1OfHArray1OfTextDisplayTemplate>&       attrValuePointers)
 {
-  int nb = attrTypes->Length();
-  if (attrTypes->Lower() != 1 || attrValueDataTypes->Lower() != 1
-      || attrValueDataTypes->Length() != nb || attrValueCounts->Lower() != 1
-      || attrValueCounts->Length() != nb)
+  int nb = IGESData_NonNull(attrTypes, "IGESDefs_AttributeDef::Init")->Length();
+  if (IGESData_NonNull(attrTypes, "IGESDefs_AttributeDef::Init")->Lower() != 1
+      || IGESData_NonNull(attrValueDataTypes, "IGESDefs_AttributeDef::Init")->Lower() != 1
+      || IGESData_NonNull(attrValueDataTypes, "IGESDefs_AttributeDef::Init")->Length() != nb
+      || IGESData_NonNull(attrValueCounts, "IGESDefs_AttributeDef::Init")->Lower() != 1
+      || IGESData_NonNull(attrValueCounts, "IGESDefs_AttributeDef::Init")->Length() != nb)
   {
     throw Standard_DimensionMismatch("IGESDefs_AttributeDef : Init");
   }

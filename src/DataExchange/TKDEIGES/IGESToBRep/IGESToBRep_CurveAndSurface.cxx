@@ -50,7 +50,16 @@
 #include <TransferBRep_ShapeBinder.hxx>
 #include <TransferBRep_ShapeListBinder.hxx>
 
+#include <IGESToBRep_TransferGuard.pxx>
+
 #include <cstdio>
+
+namespace
+{
+//! Entities whose transfer by TransferGeometry() is in progress in this thread: groups and
+//! subfigures of a damaged file can contain themselves or be nested too deeply.
+thread_local std::vector<const Standard_Transient*> THE_GEOMETRY_PATH;
+} // namespace
 
 //=================================================================================================
 
@@ -230,6 +239,25 @@ TopoDS_Shape IGESToBRep_CurveAndSurface::TransferGeometry(
   {
     Message_Msg msg1005("IGES_1005"); //  Software error :  start IsNull.
     SendFail(start, msg1005);
+    return res;
+  }
+  // an entity that contains itself, or nested too deeply, cannot be transferred
+  const IGESToBRep_TransferGuard::PathGuard aPath(THE_GEOMETRY_PATH, start.get());
+  if (!aPath.IsEntered())
+  {
+    Message_Msg msg1005("IGES_1005"); //  impossible entity transfer
+    SendFail(start, msg1005);
+    return res;
+  }
+  // an entity that failed to be read (an item of a group or a subfigure: the roots are checked
+  // by IGESToBRep_Actor) is not translated: its fields can be unset when the reading stopped
+  // before Init()
+  if (!IGESToBRep_TransferGuard::IsTranslatable(GetModel(), start))
+  {
+    Message_Msg msg1156("IGES_1156"); // transfer failed : entity skipped
+    msg1156.Arg("entity");
+    msg1156.Arg(GetModel()->StringLabel(start));
+    SendFail(start, msg1156);
     return res;
   }
 
@@ -639,7 +667,7 @@ TopoDS_Shape IGESToBRep_CurveAndSurface::GetShapeResult(
     return res;
   }
 
-  if (num <= binder->NbShapes())
+  if (num >= 1 && num <= binder->NbShapes())
   {
     res = binder->Shape(num);
   }

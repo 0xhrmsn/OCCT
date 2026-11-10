@@ -19,6 +19,7 @@
 #include <IGESGeom_SplineCurve.hxx>
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESGeom_SplineCurve, IGESData_IGESEntity)
 
@@ -35,27 +36,35 @@ void IGESGeom_SplineCurve::Init(const int                                       
                                 const occ::handle<NCollection_HArray1<double>>& allYvalues,
                                 const occ::handle<NCollection_HArray1<double>>& allZvalues)
 {
-  int len = allXPolynomials->ColLength();
-  if ((len != allYPolynomials->ColLength()) || (len != allZPolynomials->ColLength()))
+  int len = IGESData_NonNull(allXPolynomials, "IGESGeom_SplineCurve::Init")->ColLength();
+  if ((len != IGESData_NonNull(allYPolynomials, "IGESGeom_SplineCurve::Init")->ColLength())
+      || (len != IGESData_NonNull(allZPolynomials, "IGESGeom_SplineCurve::Init")->ColLength()))
   {
     throw Standard_DimensionMismatch("IGESGeom_SplineCurve : Column Length of HArray2s in Init");
   }
-  if (allBreakPoints->Lower() != 1 || allXvalues->Lower() != 1 || allYvalues->Lower() != 1
-      || allZvalues->Lower() != 1 || allXPolynomials->LowerCol() != 1
-      || allXPolynomials->LowerRow() != 1 || allYPolynomials->LowerCol() != 1
-      || allYPolynomials->LowerRow() != 1 || allZPolynomials->LowerCol() != 1
-      || allZPolynomials->LowerRow() != 1)
+  if (IGESData_NonNull(allBreakPoints, "IGESGeom_SplineCurve::Init")->Lower() != 1
+      || IGESData_NonNull(allXvalues, "IGESGeom_SplineCurve::Init")->Lower() != 1
+      || IGESData_NonNull(allYvalues, "IGESGeom_SplineCurve::Init")->Lower() != 1
+      || IGESData_NonNull(allZvalues, "IGESGeom_SplineCurve::Init")->Lower() != 1
+      || IGESData_NonNull(allXPolynomials, "IGESGeom_SplineCurve::Init")->LowerCol() != 1
+      || IGESData_NonNull(allXPolynomials, "IGESGeom_SplineCurve::Init")->LowerRow() != 1
+      || IGESData_NonNull(allYPolynomials, "IGESGeom_SplineCurve::Init")->LowerCol() != 1
+      || IGESData_NonNull(allYPolynomials, "IGESGeom_SplineCurve::Init")->LowerRow() != 1
+      || IGESData_NonNull(allZPolynomials, "IGESGeom_SplineCurve::Init")->LowerCol() != 1
+      || IGESData_NonNull(allZPolynomials, "IGESGeom_SplineCurve::Init")->LowerRow() != 1)
   {
     throw Standard_DimensionMismatch("IGESGeom_SplineCurve : Lower Indices of HArrays in Init");
   }
-  len = allXPolynomials->RowLength();
-  if ((len != allYPolynomials->RowLength()) || (len != allZPolynomials->RowLength()))
+  len = IGESData_NonNull(allXPolynomials, "IGESGeom_SplineCurve::Init")->RowLength();
+  if ((len != IGESData_NonNull(allYPolynomials, "IGESGeom_SplineCurve::Init")->RowLength())
+      || (len != IGESData_NonNull(allZPolynomials, "IGESGeom_SplineCurve::Init")->RowLength()))
   {
     throw Standard_DimensionMismatch("IGESGeom_SplineCurve : Row Length of HArray2s in Init");
   }
 
-  len = allXvalues->Length();
-  if ((len != allYvalues->Length()) || (len != allZvalues->Length()))
+  len = IGESData_NonNull(allXvalues, "IGESGeom_SplineCurve::Init")->Length();
+  if ((len != IGESData_NonNull(allYvalues, "IGESGeom_SplineCurve::Init")->Length())
+      || (len != IGESData_NonNull(allZvalues, "IGESGeom_SplineCurve::Init")->Length()))
   {
     throw Standard_DimensionMismatch("IGESGeom_SplineCurve : Length of HArray1s in Init");
   }

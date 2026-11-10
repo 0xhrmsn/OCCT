@@ -20,6 +20,7 @@
 #include <IGESDefs_AssociativityDef.hxx>
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESDefs_AssociativityDef, IGESData_IGESEntity)
 
@@ -30,10 +31,14 @@ void IGESDefs_AssociativityDef::Init(const occ::handle<NCollection_HArray1<int>>
                                      const occ::handle<NCollection_HArray1<int>>& numItems,
                                      const occ::handle<IGESBasic_HArray1OfHArray1OfInteger>& items)
 {
-  int len = requirements->Length();
-  if (requirements->Lower() != 1 || (orders->Lower() != 1 || orders->Length() != len)
-      || (numItems->Lower() != 1 || numItems->Length() != len)
-      || (items->Lower() != 1 || items->Length() != len))
+  int len = IGESData_NonNull(requirements, "IGESDefs_AssociativityDef::Init")->Length();
+  if (IGESData_NonNull(requirements, "IGESDefs_AssociativityDef::Init")->Lower() != 1
+      || (IGESData_NonNull(orders, "IGESDefs_AssociativityDef::Init")->Lower() != 1
+          || IGESData_NonNull(orders, "IGESDefs_AssociativityDef::Init")->Length() != len)
+      || (IGESData_NonNull(numItems, "IGESDefs_AssociativityDef::Init")->Lower() != 1
+          || IGESData_NonNull(numItems, "IGESDefs_AssociativityDef::Init")->Length() != len)
+      || (IGESData_NonNull(items, "IGESDefs_AssociativityDef::Init")->Lower() != 1
+          || IGESData_NonNull(items, "IGESDefs_AssociativityDef::Init")->Length() != len))
   {
     throw Standard_DimensionMismatch("IGESDefs_AssociativityDef : Init");
   }

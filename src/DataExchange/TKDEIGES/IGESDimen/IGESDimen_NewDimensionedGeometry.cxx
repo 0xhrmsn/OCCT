@@ -22,6 +22,7 @@
 #include <IGESDimen_NewDimensionedGeometry.hxx>
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESDimen_NewDimensionedGeometry, IGESData_IGESEntity)
 
@@ -36,9 +37,12 @@ void IGESDimen_NewDimensionedGeometry::Init(
   const occ::handle<NCollection_HArray1<int>>&                              allLocations,
   const occ::handle<NCollection_HArray1<gp_XYZ>>&                           allPoints)
 {
-  int num = allEntities->Length();
-  if (allEntities->Lower() != 1 || allLocations->Lower() != 1 || allLocations->Length() != num
-      || allPoints->Lower() != 1 || allPoints->Length() != num)
+  int num = IGESData_NonNull(allEntities, "IGESDimen_NewDimensionedGeometry::Init")->Length();
+  if (IGESData_NonNull(allEntities, "IGESDimen_NewDimensionedGeometry::Init")->Lower() != 1
+      || IGESData_NonNull(allLocations, "IGESDimen_NewDimensionedGeometry::Init")->Lower() != 1
+      || IGESData_NonNull(allLocations, "IGESDimen_NewDimensionedGeometry::Init")->Length() != num
+      || IGESData_NonNull(allPoints, "IGESDimen_NewDimensionedGeometry::Init")->Lower() != 1
+      || IGESData_NonNull(allPoints, "IGESDimen_NewDimensionedGeometry::Init")->Length() != num)
   {
     throw Standard_DimensionMismatch("IGESDimen_NewDimensionedGeometry: Init");
   }

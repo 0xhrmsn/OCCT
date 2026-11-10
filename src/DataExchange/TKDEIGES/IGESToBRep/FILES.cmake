@@ -29,4 +29,5 @@ set(OCCT_IGESToBRep_FILES
   IGESToBRep_TopoCurve.hxx
   IGESToBRep_TopoSurface.cxx
   IGESToBRep_TopoSurface.hxx
+  IGESToBRep_TransferGuard.pxx
 )

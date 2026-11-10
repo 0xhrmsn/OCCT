@@ -19,6 +19,7 @@
 #include <IGESDimen_DimensionedGeometry.hxx>
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESDimen_DimensionedGeometry, IGESData_IGESEntity)
 
@@ -29,7 +30,7 @@ void IGESDimen_DimensionedGeometry::Init(
   const occ::handle<IGESData_IGESEntity>&                                   aDimension,
   const occ::handle<NCollection_HArray1<occ::handle<IGESData_IGESEntity>>>& entities)
 {
-  if (entities->Lower() != 1)
+  if (IGESData_NonNull(entities, "IGESDimen_DimensionedGeometry::Init")->Lower() != 1)
   {
     throw Standard_DimensionMismatch("IGESDimen_DimensionedGeometry : Init");
   }

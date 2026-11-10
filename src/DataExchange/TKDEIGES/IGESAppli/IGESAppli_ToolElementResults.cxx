@@ -72,12 +72,13 @@ void IGESAppli_ToolElementResults::ReadOwnParams(const occ::handle<IGESAppli_Ele
 
   if (num > 0)
   {
-    allElementIdentifiers  = new NCollection_HArray1<int>(1, num);
+    // the values not read (fails below) are 0, not undefined
+    allElementIdentifiers  = new NCollection_HArray1<int>(1, num, 0);
     allElements            = new NCollection_HArray1<occ::handle<IGESAppli_FiniteElement>>(1, num);
-    allElementTopologyType = new NCollection_HArray1<int>(1, num);
-    allNbLayers            = new NCollection_HArray1<int>(1, num);
-    allDataLayerFlag       = new NCollection_HArray1<int>(1, num);
-    allNbResultDataLocs    = new NCollection_HArray1<int>(1, num);
+    allElementTopologyType = new NCollection_HArray1<int>(1, num, 0);
+    allNbLayers            = new NCollection_HArray1<int>(1, num, 0);
+    allDataLayerFlag       = new NCollection_HArray1<int>(1, num, 0);
+    allNbResultDataLocs    = new NCollection_HArray1<int>(1, num, 0);
     allResultDataLoc       = new IGESBasic_HArray1OfHArray1OfInteger(1, num);
     allResultData          = new IGESBasic_HArray1OfHArray1OfReal(1, num);
     // ??  WHAT ABOUT FILLING  ?

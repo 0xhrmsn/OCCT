@@ -22,6 +22,7 @@
 #include <IGESDimen_CenterLine.hxx>
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESDimen_CenterLine, IGESData_IGESEntity)
 
@@ -31,7 +32,7 @@ void IGESDimen_CenterLine::Init(const int                                      a
                                 const double                                   aZdisp,
                                 const occ::handle<NCollection_HArray1<gp_XY>>& dataPnts)
 {
-  if (dataPnts->Lower() != 1)
+  if (IGESData_NonNull(dataPnts, "IGESDimen_CenterLine::Init")->Lower() != 1)
   {
     throw Standard_DimensionMismatch("IGESDimen_CenterLine : Init");
   }

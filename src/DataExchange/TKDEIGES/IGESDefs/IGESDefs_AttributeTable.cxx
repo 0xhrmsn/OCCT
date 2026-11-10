@@ -27,6 +27,7 @@
 #include <Standard_Transient.hxx>
 #include <Standard_Type.hxx>
 #include <Standard_Integer.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESDefs_AttributeTable, IGESData_IGESEntity)
 
@@ -38,14 +39,15 @@ IGESDefs_AttributeTable::IGESDefs_AttributeTable() = default;
 void IGESDefs_AttributeTable::Init(
   const occ::handle<NCollection_HArray2<occ::handle<Standard_Transient>>>& attributes)
 {
-  if (attributes->LowerCol() != 1 || attributes->LowerRow() != 1)
+  if (IGESData_NonNull(attributes, "IGESDefs_AttributeTable::Init")->LowerCol() != 1
+      || IGESData_NonNull(attributes, "IGESDefs_AttributeTable::Init")->LowerRow() != 1)
   {
     throw Standard_DimensionMismatch("IGESDefs_AttributeTable : Init");
   }
   theAttributes = attributes;
 
   int fn = FormNumber();
-  if (attributes->UpperCol() > 1)
+  if (IGESData_NonNull(attributes, "IGESDefs_AttributeTable::Init")->UpperCol() > 1)
   {
     fn = 1;
   }

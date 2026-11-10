@@ -20,6 +20,7 @@
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
 #include <TCollection_HAsciiString.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESAppli_LevelToPWBLayerMap, IGESData_IGESEntity)
 
@@ -32,11 +33,16 @@ void IGESAppli_LevelToPWBLayerMap::Init(
   const occ::handle<NCollection_HArray1<int>>&                                   allPhysLevels,
   const occ::handle<NCollection_HArray1<occ::handle<TCollection_HAsciiString>>>& allExchIdents)
 {
-  int num = allExchLevels->Length();
-  if (allExchLevels->Lower() != 1
-      || (allNativeLevels->Lower() != 1 || allNativeLevels->Length() != num)
-      || (allPhysLevels->Lower() != 1 || allPhysLevels->Length() != num)
-      || (allExchIdents->Lower() != 1 || allExchIdents->Length() != num))
+  int num = IGESData_NonNull(allExchLevels, "IGESAppli_LevelToPWBLayerMap::Init")->Length();
+  if (IGESData_NonNull(allExchLevels, "IGESAppli_LevelToPWBLayerMap::Init")->Lower() != 1
+      || (IGESData_NonNull(allNativeLevels, "IGESAppli_LevelToPWBLayerMap::Init")->Lower() != 1
+          || IGESData_NonNull(allNativeLevels, "IGESAppli_LevelToPWBLayerMap::Init")->Length()
+               != num)
+      || (IGESData_NonNull(allPhysLevels, "IGESAppli_LevelToPWBLayerMap::Init")->Lower() != 1
+          || IGESData_NonNull(allPhysLevels, "IGESAppli_LevelToPWBLayerMap::Init")->Length() != num)
+      || (IGESData_NonNull(allExchIdents, "IGESAppli_LevelToPWBLayerMap::Init")->Lower() != 1
+          || IGESData_NonNull(allExchIdents, "IGESAppli_LevelToPWBLayerMap::Init")->Length()
+               != num))
   {
     throw Standard_DimensionMismatch("IGESAppli_LevelToPWBLayerMap: Init");
   }

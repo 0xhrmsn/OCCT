@@ -20,6 +20,7 @@
 #include <IGESGraph_Color.hxx>
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESDraw_SegmentedViewsVisible, IGESData_ViewKindEntity)
 
@@ -36,15 +37,34 @@ void IGESDraw_SegmentedViewsVisible::Init(
                                                allLineFontDefinitions,
   const occ::handle<NCollection_HArray1<int>>& allLineWeights)
 {
-  int Len = allViews->Length();
-  if (allViews->Lower() != 1
-      || (allBreakpointParameters->Lower() != 1 || allBreakpointParameters->Length() != Len)
-      || (allDisplayFlags->Lower() != 1 || allDisplayFlags->Length() != Len)
-      || (allColorValues->Lower() != 1 || allColorValues->Length() != Len)
-      || (allColorDefinitions->Lower() != 1 || allColorDefinitions->Length() != Len)
-      || (allLineFontValues->Lower() != 1 || allLineFontValues->Length() != Len)
-      || (allLineFontDefinitions->Lower() != 1 || allLineFontDefinitions->Length() != Len)
-      || (allLineWeights->Lower() != 1 || allLineWeights->Length() != Len))
+  int Len = IGESData_NonNull(allViews, "IGESDraw_SegmentedViewsVisible::Init")->Length();
+  if (IGESData_NonNull(allViews, "IGESDraw_SegmentedViewsVisible::Init")->Lower() != 1
+      || (IGESData_NonNull(allBreakpointParameters, "IGESDraw_SegmentedViewsVisible::Init")->Lower()
+            != 1
+          || IGESData_NonNull(allBreakpointParameters, "IGESDraw_SegmentedViewsVisible::Init")
+                 ->Length()
+               != Len)
+      || (IGESData_NonNull(allDisplayFlags, "IGESDraw_SegmentedViewsVisible::Init")->Lower() != 1
+          || IGESData_NonNull(allDisplayFlags, "IGESDraw_SegmentedViewsVisible::Init")->Length()
+               != Len)
+      || (IGESData_NonNull(allColorValues, "IGESDraw_SegmentedViewsVisible::Init")->Lower() != 1
+          || IGESData_NonNull(allColorValues, "IGESDraw_SegmentedViewsVisible::Init")->Length()
+               != Len)
+      || (IGESData_NonNull(allColorDefinitions, "IGESDraw_SegmentedViewsVisible::Init")->Lower()
+            != 1
+          || IGESData_NonNull(allColorDefinitions, "IGESDraw_SegmentedViewsVisible::Init")->Length()
+               != Len)
+      || (IGESData_NonNull(allLineFontValues, "IGESDraw_SegmentedViewsVisible::Init")->Lower() != 1
+          || IGESData_NonNull(allLineFontValues, "IGESDraw_SegmentedViewsVisible::Init")->Length()
+               != Len)
+      || (IGESData_NonNull(allLineFontDefinitions, "IGESDraw_SegmentedViewsVisible::Init")->Lower()
+            != 1
+          || IGESData_NonNull(allLineFontDefinitions, "IGESDraw_SegmentedViewsVisible::Init")
+                 ->Length()
+               != Len)
+      || (IGESData_NonNull(allLineWeights, "IGESDraw_SegmentedViewsVisible::Init")->Lower() != 1
+          || IGESData_NonNull(allLineWeights, "IGESDraw_SegmentedViewsVisible::Init")->Length()
+               != Len))
   {
     throw Standard_DimensionMismatch("IGESDraw_SegmentedViewsVisible : Init");
   }

@@ -20,6 +20,7 @@
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
 #include <TCollection_HAsciiString.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESDimen_DimensionDisplayData, IGESData_IGESEntity)
 
@@ -43,8 +44,13 @@ void IGESDimen_DimensionDisplayData::Init(const int                             
 {
   if (!notes.IsNull())
   {
-    if (notes->Lower() != 1 || (startInd->Lower() != 1 || notes->Length() != startInd->Length())
-        || (endInd->Lower() != 1 || notes->Length() != endInd->Length()))
+    if (notes->Lower() != 1
+        || (IGESData_NonNull(startInd, "IGESDimen_DimensionDisplayData::Init")->Lower() != 1
+            || notes->Length()
+                 != IGESData_NonNull(startInd, "IGESDimen_DimensionDisplayData::Init")->Length())
+        || (IGESData_NonNull(endInd, "IGESDimen_DimensionDisplayData::Init")->Lower() != 1
+            || notes->Length()
+                 != IGESData_NonNull(endInd, "IGESDimen_DimensionDisplayData::Init")->Length()))
     {
       throw Standard_DimensionMismatch("IGESDimen_DimensionDisplayData : Init");
     }

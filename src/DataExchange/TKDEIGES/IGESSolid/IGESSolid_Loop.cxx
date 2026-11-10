@@ -25,6 +25,7 @@
 #include <IGESSolid_VertexList.hxx>
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESSolid_Loop, IGESData_IGESEntity)
 
@@ -39,13 +40,21 @@ void IGESSolid_Loop::Init(
   const occ::handle<IGESBasic_HArray1OfHArray1OfInteger>&                   IsoparametricFlags,
   const occ::handle<IGESBasic_HArray1OfHArray1OfIGESEntity>&                Curves)
 {
-  int nb = Types->Length();
+  int nb = IGESData_NonNull(Types, "IGESSolid_Loop::Init")->Length();
 
-  if (Types->Lower() != 1 || Edges->Lower() != 1 || nb != Edges->Length() || Index->Lower() != 1
-      || nb != Index->Length() || Orient->Lower() != 1 || nb != Orient->Length()
-      || nbParameterCurves->Lower() != 1 || nb != nbParameterCurves->Length()
-      || IsoparametricFlags->Lower() != 1 || nb != IsoparametricFlags->Length()
-      || Curves->Lower() != 1 || nb != Curves->Length())
+  if (IGESData_NonNull(Types, "IGESSolid_Loop::Init")->Lower() != 1
+      || IGESData_NonNull(Edges, "IGESSolid_Loop::Init")->Lower() != 1
+      || nb != IGESData_NonNull(Edges, "IGESSolid_Loop::Init")->Length()
+      || IGESData_NonNull(Index, "IGESSolid_Loop::Init")->Lower() != 1
+      || nb != IGESData_NonNull(Index, "IGESSolid_Loop::Init")->Length()
+      || IGESData_NonNull(Orient, "IGESSolid_Loop::Init")->Lower() != 1
+      || nb != IGESData_NonNull(Orient, "IGESSolid_Loop::Init")->Length()
+      || IGESData_NonNull(nbParameterCurves, "IGESSolid_Loop::Init")->Lower() != 1
+      || nb != IGESData_NonNull(nbParameterCurves, "IGESSolid_Loop::Init")->Length()
+      || IGESData_NonNull(IsoparametricFlags, "IGESSolid_Loop::Init")->Lower() != 1
+      || nb != IGESData_NonNull(IsoparametricFlags, "IGESSolid_Loop::Init")->Length()
+      || IGESData_NonNull(Curves, "IGESSolid_Loop::Init")->Lower() != 1
+      || nb != IGESData_NonNull(Curves, "IGESSolid_Loop::Init")->Length())
   {
     throw Standard_DimensionError("IGESSolid_Loop : Init");
   }

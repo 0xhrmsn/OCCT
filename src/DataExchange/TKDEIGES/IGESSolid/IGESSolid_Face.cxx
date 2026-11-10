@@ -30,7 +30,8 @@ void IGESSolid_Face::Init(
   const bool                                                           OuterLoopFlag,
   const occ::handle<NCollection_HArray1<occ::handle<IGESSolid_Loop>>>& Loops)
 {
-  if (Loops->Lower() != 1)
+  // Loops is null when the number of loops is not read (the reading reports it)
+  if (!Loops.IsNull() && Loops->Lower() != 1)
   {
     throw Standard_DimensionMismatch("IGESSolid_Face : Init");
   }

@@ -80,11 +80,12 @@ void IGESSolid_ToolLoop::ReadOwnParams(const occ::handle<IGESSolid_Loop>&       
     Message_Msg Msg180("XSTEP_180");
     Message_Msg Msg190("XSTEP_190");
 
-    tempTypes          = new NCollection_HArray1<int>(1, nbedges);
+    // the values not read (fails below) are 0, not undefined
+    tempTypes          = new NCollection_HArray1<int>(1, nbedges, 0);
     tempEdges          = new NCollection_HArray1<occ::handle<IGESData_IGESEntity>>(1, nbedges);
-    tempIndex          = new NCollection_HArray1<int>(1, nbedges);
-    tempOrientation    = new NCollection_HArray1<int>(1, nbedges);
-    nbParameterCurves  = new NCollection_HArray1<int>(1, nbedges);
+    tempIndex          = new NCollection_HArray1<int>(1, nbedges, 0);
+    tempOrientation    = new NCollection_HArray1<int>(1, nbedges, 0);
+    nbParameterCurves  = new NCollection_HArray1<int>(1, nbedges, 0);
     isoparametricFlags = new IGESBasic_HArray1OfHArray1OfInteger(1, nbedges);
     tempCurves         = new IGESBasic_HArray1OfHArray1OfIGESEntity(1, nbedges);
 
@@ -124,8 +125,9 @@ void IGESSolid_ToolLoop::ReadOwnParams(const occ::handle<IGESSolid_Loop>&       
       }
       // st = PR.ReadEntity(IR, PR.Current(), "Edges", anent);
       // if (!st) {  }    // WARNING : Two possible Types : //szv#4:S4163:12Mar99 not needed
-      if (!anent->IsKind(STANDARD_TYPE(IGESSolid_VertexList))
-          && !anent->IsKind(STANDARD_TYPE(IGESSolid_EdgeList)))
+      if (anent.IsNull()
+          || (!anent->IsKind(STANDARD_TYPE(IGESSolid_VertexList))
+              && !anent->IsKind(STANDARD_TYPE(IGESSolid_EdgeList))))
       {
         PR.SendFail(Msg190);
       }

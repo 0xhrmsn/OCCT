@@ -19,6 +19,7 @@
 #include <IGESSolid_Shell.hxx>
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESSolid_Shell, IGESData_IGESEntity)
 
@@ -28,7 +29,10 @@ void IGESSolid_Shell::Init(
   const occ::handle<NCollection_HArray1<occ::handle<IGESSolid_Face>>>& Faces,
   const occ::handle<NCollection_HArray1<int>>&                         Orient)
 {
-  if (Faces->Lower() != 1 || Orient->Lower() != 1 || Faces->Length() != Orient->Length())
+  if (IGESData_NonNull(Faces, "IGESSolid_Shell::Init")->Lower() != 1
+      || IGESData_NonNull(Orient, "IGESSolid_Shell::Init")->Lower() != 1
+      || IGESData_NonNull(Faces, "IGESSolid_Shell::Init")->Length()
+           != IGESData_NonNull(Orient, "IGESSolid_Shell::Init")->Length())
   {
     throw Standard_DimensionError("IGESSolid_Shell : Init");
   }

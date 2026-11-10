@@ -119,8 +119,15 @@
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Vertex.hxx>
 #include <TopoDS_Wire.hxx>
+#include <IGESToBRep_TransferGuard.pxx>
 
 #include <cstdio>
+
+namespace
+{
+//! Surfaces whose transfer is in progress in this thread, see TransferTopoSurface()
+thread_local std::vector<const Standard_Transient*> THE_SURFACE_PATH;
+} // namespace
 
 // S4054: ShapeTool_MakeWire -> ShapeExtend_WireData //:g8: BRepLib_MakeWire -> ShapeTool_MakeWire
 //: e3
@@ -189,6 +196,18 @@ TopoDS_Shape IGESToBRep_TopoSurface::TransferTopoSurface(const occ::handle<IGESD
 
   TopoDS_Shape res;
   TheULength = 1.;
+  // a surface made of other entities (trimmed, bounded, offset, ...) that contains itself or is
+  // nested too deeply, or that failed to be read, is not translated
+  const IGESToBRep_TransferGuard::PathGuard aPath(THE_SURFACE_PATH, st.get());
+  if (!st.IsNull()
+      && (!aPath.IsEntered() || !IGESToBRep_TransferGuard::IsTranslatable(GetModel(), st)))
+  {
+    Message_Msg Msg1156("IGES_1156"); // transfer failed : entity skipped
+    Msg1156.Arg("surface");
+    Msg1156.Arg(GetModel()->StringLabel(st));
+    SendFail(st, Msg1156);
+    return res;
+  }
   // S4054
   if (st.IsNull())
   {

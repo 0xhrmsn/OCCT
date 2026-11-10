@@ -24,6 +24,7 @@
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_OutOfRange.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESDimen_LeaderArrow, IGESData_IGESEntity)
 
@@ -35,7 +36,7 @@ void IGESDimen_LeaderArrow::Init(const double                                   
                                  const gp_XY&                                   position,
                                  const occ::handle<NCollection_HArray1<gp_XY>>& segments)
 {
-  if (segments->Lower() != 1)
+  if (IGESData_NonNull(segments, "IGESDimen_LeaderArrow::Init")->Lower() != 1)
   {
     throw Standard_DimensionMismatch("IGESDimen_LeaderArrow : Init");
   }

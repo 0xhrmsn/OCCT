@@ -19,6 +19,7 @@
 #include <IGESGeom_BoundedSurface.hxx>
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESGeom_BoundedSurface, IGESData_IGESEntity)
 
@@ -29,7 +30,7 @@ void IGESGeom_BoundedSurface::Init(
   const occ::handle<IGESData_IGESEntity>&                                 aSurface,
   const occ::handle<NCollection_HArray1<occ::handle<IGESGeom_Boundary>>>& aBoundary)
 {
-  if (aBoundary->Lower() != 1)
+  if (IGESData_NonNull(aBoundary, "IGESGeom_BoundedSurface::Init")->Lower() != 1)
   {
     throw Standard_DimensionMismatch("IGESGeom_BoundedSurface : Init");
   }

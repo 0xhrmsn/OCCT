@@ -21,6 +21,7 @@
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
 #include <TCollection_HAsciiString.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESBasic_ExternalRefFileIndex, IGESData_IGESEntity)
 
@@ -30,8 +31,10 @@ void IGESBasic_ExternalRefFileIndex::Init(
   const occ::handle<NCollection_HArray1<occ::handle<TCollection_HAsciiString>>>& aNameArray,
   const occ::handle<NCollection_HArray1<occ::handle<IGESData_IGESEntity>>>&      allEntities)
 {
-  if (aNameArray->Lower() != 1 || allEntities->Lower() != 1
-      || aNameArray->Length() != allEntities->Length())
+  if (IGESData_NonNull(aNameArray, "IGESBasic_ExternalRefFileIndex::Init")->Lower() != 1
+      || IGESData_NonNull(allEntities, "IGESBasic_ExternalRefFileIndex::Init")->Lower() != 1
+      || IGESData_NonNull(aNameArray, "IGESBasic_ExternalRefFileIndex::Init")->Length()
+           != IGESData_NonNull(allEntities, "IGESBasic_ExternalRefFileIndex::Init")->Length())
   {
     throw Standard_DimensionMismatch("IGESBasic_ExternalRefFileIndex: Init");
   }

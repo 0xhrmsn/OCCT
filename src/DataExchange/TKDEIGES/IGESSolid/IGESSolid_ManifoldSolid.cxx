@@ -20,6 +20,7 @@
 #include <IGESSolid_Shell.hxx>
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESSolid_ManifoldSolid, IGESData_IGESEntity)
 
@@ -33,8 +34,10 @@ void IGESSolid_ManifoldSolid::Init(
 {
   if (!VoidShells.IsNull())
   {
-    if (VoidShells->Lower() != 1 || VoidShellFlags->Lower() != 1
-        || VoidShells->Length() != VoidShellFlags->Length())
+    if (VoidShells->Lower() != 1
+        || IGESData_NonNull(VoidShellFlags, "IGESSolid_ManifoldSolid::Init")->Lower() != 1
+        || VoidShells->Length()
+             != IGESData_NonNull(VoidShellFlags, "IGESSolid_ManifoldSolid::Init")->Length())
     {
       throw Standard_DimensionError("IGESSolid_ManifoldSolid : Init");
     }

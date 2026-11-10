@@ -21,6 +21,7 @@
 #include <IGESDimen_LeaderArrow.hxx>
 #include <Standard_DimensionMismatch.hxx>
 #include <Standard_Type.hxx>
+#include <IGESData_NonNull.pxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(IGESDimen_GeneralLabel, IGESData_IGESEntity)
 
@@ -30,7 +31,7 @@ void IGESDimen_GeneralLabel::Init(
   const occ::handle<IGESDimen_GeneralNote>&                                   aNote,
   const occ::handle<NCollection_HArray1<occ::handle<IGESDimen_LeaderArrow>>>& someLeaders)
 {
-  if (someLeaders->Lower() != 1)
+  if (IGESData_NonNull(someLeaders, "IGESDimen_GeneralLabel::Init")->Lower() != 1)
   {
     throw Standard_DimensionMismatch("IGESDimen_GeneralLabel : Init");
   }
