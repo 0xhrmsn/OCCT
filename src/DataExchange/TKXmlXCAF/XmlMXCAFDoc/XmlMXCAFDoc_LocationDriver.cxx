@@ -141,14 +141,17 @@ bool XmlMXCAFDoc_LocationDriver::Translate(const XmlObjMgt_Element&    theParent
     return false;
   }
 
-  int                         aPower;
+  int                         aPower = 0;
   occ::handle<TopLoc_Datum3D> aDatum;
 
   if (aFileVer >= TDocStd_FormatVersion_VERSION_6)
   {
     //  Get Location ID
-    int anId;
-    aLocElem.getAttribute(::LocIdString()).GetInteger(anId);
+    int anId = 0;
+    if (!aLocElem.getAttribute(::LocIdString()).GetInteger(anId))
+    {
+      return false;
+    }
 
     const TopLoc_Location& aLoc = myLocations->Location(anId);
     aPower                      = aLoc.FirstPower();
@@ -157,19 +160,23 @@ bool XmlMXCAFDoc_LocationDriver::Translate(const XmlObjMgt_Element&    theParent
   else
   {
     //  Get Power
-    aLocElem.getAttribute(::PowerString()).GetInteger(aPower);
+    if (!aLocElem.getAttribute(::PowerString()).GetInteger(aPower))
+    {
+      return false;
+    }
 
     //  get datum
     XmlObjMgt_Persistent aPD(aLocElem, ::DatumString());
     if (aPD.Id() <= 0)
     {
-      int aDatumID;
+      int aDatumID = 0;
       aLocElem.getAttribute(::DatumString()).GetInteger(aDatumID);
       if (aDatumID > 0 && theMap.IsBound(aDatumID))
       {
         aDatum = occ::down_cast<TopLoc_Datum3D>(theMap.Find(aDatumID));
       }
-      else
+      // the datums share the identifiers of the attributes: another object is not a datum
+      if (aDatum.IsNull())
       {
         return false;
       }

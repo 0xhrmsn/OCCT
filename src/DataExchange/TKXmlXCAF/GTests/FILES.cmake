@@ -2,4 +2,5 @@
 set(OCCT_TKXmlXCAF_GTests_FILES_LOCATION "${CMAKE_CURRENT_LIST_DIR}")
 
 set(OCCT_TKXmlXCAF_GTests_FILES
+  XmlMXCAFDoc_LocationDriver_Test.cxx
 )
