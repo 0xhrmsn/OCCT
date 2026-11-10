@@ -16,10 +16,7 @@
 
 //=================================================================================================
 
-inline BRepFeat_MakeRevol::BRepFeat_MakeRevol()
-    : myStatusError(BRepFeat_OK)
-{
-}
+inline BRepFeat_MakeRevol::BRepFeat_MakeRevol() {}
 
 //=================================================================================================
 

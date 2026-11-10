@@ -13,6 +13,8 @@
 #include <BRepBuilderAPI_MakeWire.hxx>
 #include <BRepCheck_Analyzer.hxx>
 #include <BRepFeat_MakePrism.hxx>
+#include <BRepFeat_MakeRevol.hxx>
+#include <gp_Pln.hxx>
 #include <BRepGProp.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
@@ -289,4 +291,32 @@ TEST(BRepFeat_MakePrismTest, PocketThruAll_HistoryComplete)
   checkPocket(
     [](BRepFeat_MakePrism& theP, const TopoDS_Face&, const TopoDS_Face&) { theP.PerformThruAll(); },
     M_PI * 64.0 * 30.0);
+}
+
+// MakePrism and MakeRevol set the status of their failure in a member that hid the one of
+// BRepFeat_Form: CurrentStatusError() reported no error for a feature that was not done.
+TEST(BRepFeat_MakePrismTest, FailureStatusReported)
+{
+  const TopoDS_Shape aBase    = slantedBlock();
+  const TopoDS_Face  aProfile = disk(gp_Pnt(50, 30, 0), 8.0);
+  const TopoDS_Face  aBottom  = faceNearest(aBase, gp_Pnt(50, 30, 0));
+  const TopoDS_Face  aSlanted = faceNearest(aBase, gp_Pnt(50, 30, 30));
+  // an infinite plane and a face of the base are not of the same kind
+  const TopoDS_Face anInfinite =
+    BRepBuilderAPI_MakeFace(gp_Pln(gp_Pnt(0.0, 0.0, 5.0), gp::DZ())).Face();
+
+  BRepFeat_MakePrism aPrism(aBase, aProfile, aBottom, gp::DZ(), 0, true);
+  aPrism.Perform(anInfinite, aSlanted);
+  EXPECT_FALSE(aPrism.IsDone());
+  EXPECT_EQ(aPrism.CurrentStatusError(), BRepFeat_IncTypes);
+
+  BRepFeat_MakeRevol aRevol(aBase,
+                            aProfile,
+                            aBottom,
+                            gp_Ax1(gp_Pnt(80.0, 30.0, 0.0), gp::DY()),
+                            0,
+                            true);
+  aRevol.Perform(anInfinite, aSlanted);
+  EXPECT_FALSE(aRevol.IsDone());
+  EXPECT_EQ(aRevol.CurrentStatusError(), BRepFeat_IncTypes);
 }

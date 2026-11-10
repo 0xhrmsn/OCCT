@@ -97,7 +97,8 @@ private:
   gp_Ax1                                        myAxis;
   NCollection_Sequence<occ::handle<Geom_Curve>> myCurves;
   occ::handle<Geom_Curve>                       myBCurve;
-  BRepFeat_StatusError                          myStatusError;
+  // the status is BRepFeat_Form::myStatusError: a member of the same name hid it from
+  // CurrentStatusError(), which reported no error for a failed feature
 };
 
 #include <BRepFeat_MakeRevol.lxx>
