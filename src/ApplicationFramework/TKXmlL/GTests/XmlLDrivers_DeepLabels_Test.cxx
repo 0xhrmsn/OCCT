@@ -111,11 +111,14 @@ int openChain(const std::string& theData)
 
 } // namespace
 
-// Guard: the labels of an XML document are read recursively; the depth of XML elements is
-// limited by LDOMParser, deep enough for any document and shallow enough for the stack.
+// Labels were read recursively, limited only by the depth of XML elements accepted by LDOMParser
+// (1000): a document near that depth used most of a 1 MiB stack, and overflowed it in builds with
+// larger frames (ASan), before the attributes of the deepest label were read.
 TEST(XmlLDriversTest, Read_DeepLabels)
 {
   EXPECT_EQ(openChain(deepChain(0)), 3);
-  EXPECT_EQ(openChain(deepChain(900)), 903);
+  EXPECT_EQ(openChain(deepChain(296)), 299);
+  EXPECT_EQ(openChain(deepChain(297)), -1);
+  EXPECT_EQ(openChain(deepChain(900)), -1);
   EXPECT_EQ(openChain(deepChain(2000)), -1);
 }

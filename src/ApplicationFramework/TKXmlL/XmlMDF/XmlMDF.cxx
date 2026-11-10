@@ -34,6 +34,31 @@
 #include <TDocStd_Document.hxx>
 #include <Standard_GUID.hxx>
 
+namespace
+{
+//! Labels are read recursively, one level per nested label element. LDOMParser accepts up to 1000
+//! nested elements, which leaves no margin on a 1 MiB stack for the attributes read at the deepest
+//! label (shapes are read recursively too). Same limit as the binary documents.
+constexpr int THE_MAX_LABEL_DEPTH = 300;
+
+//! Depth of the label being read by this thread.
+thread_local int THE_LABEL_DEPTH = 0;
+
+//! Counts a label being read by this thread.
+class LabelDepthGuard
+{
+public:
+  LabelDepthGuard() { ++THE_LABEL_DEPTH; }
+
+  ~LabelDepthGuard() { --THE_LABEL_DEPTH; }
+
+  bool IsTooDeep() const { return THE_LABEL_DEPTH > THE_MAX_LABEL_DEPTH; }
+
+  LabelDepthGuard(const LabelDepthGuard&)            = delete;
+  LabelDepthGuard& operator=(const LabelDepthGuard&) = delete;
+};
+} // namespace
+
 IMPLEMENT_DOMSTRING(TagString, "tag")
 IMPLEMENT_DOMSTRING(LabelString, "label")
 #define DATATYPE_MIGRATION
@@ -186,6 +211,15 @@ int XmlMDF::ReadSubTree(
   const NCollection_DataMap<TCollection_AsciiString, occ::handle<XmlMDF_ADriver>>& theDriverMap,
   const Message_ProgressRange&                                                     theRange)
 {
+  LabelDepthGuard aDepth;
+  if (aDepth.IsTooDeep())
+  {
+    theDriverMap.Find("TDF_TagSource")
+      ->MessageDriver()
+      ->Send("XmlMDF: labels nested too deeply", Message_Fail);
+    return -1;
+  }
+
   // Extraction of the driver subset.
   int count = 0;
 
