@@ -18,7 +18,11 @@
 #include <gp_TrsfForm.hxx>
 #include <gp_Mat2d.hxx>
 #include <gp_XY.hxx>
+#include <Standard_ConstructionError.hxx>
 #include <Standard_OutOfRange.hxx>
+
+#include <cmath>
+#include <limits>
 
 class gp_Trsf;
 class gp_Pnt2d;
@@ -245,6 +249,9 @@ inline gp_Trsf2d::gp_Trsf2d(const gp_Trsf& theT)
 
 inline void gp_Trsf2d::SetRotation(const gp_Pnt2d& theP, const double theAng)
 {
+  // a NaN or infinite angle gave a matrix of NaN without any error
+  Standard_ConstructionError_Raise_if(!(std::abs(theAng) <= std::numeric_limits<double>::max()),
+                                      "gp_Trsf2d::SetRotation() - the angle is not finite");
   shape = gp_Rotation;
   scale = 1.0;
   loc   = theP.XY();

@@ -34,6 +34,8 @@
 #include <Standard_OutOfRange.hxx>
 #include <Standard_Dump.hxx>
 
+#include <limits>
+
 //=================================================================================================
 
 gp_Trsf::gp_Trsf(const gp_Trsf2d& T)
@@ -89,6 +91,9 @@ void gp_Trsf::SetMirror(const gp_Ax2& A2) noexcept
 
 void gp_Trsf::SetRotation(const gp_Ax1& A1, const double Ang)
 {
+  // a NaN or infinite angle gave a matrix of NaN without any error
+  Standard_ConstructionError_Raise_if(!(std::abs(Ang) <= std::numeric_limits<double>::max()),
+                                      "gp_Trsf::SetRotation() - the angle is not finite");
   shape = gp_Rotation;
   scale = 1.;
   loc   = A1.Location().XYZ();

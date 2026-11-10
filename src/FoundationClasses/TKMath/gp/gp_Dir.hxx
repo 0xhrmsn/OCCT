@@ -20,6 +20,8 @@
 #include <Standard_DomainError.hxx>
 #include <Standard_OutOfRange.hxx>
 
+#include <limits>
+
 class gp_Vec;
 class gp_Ax1;
 class gp_Ax2;
@@ -328,6 +330,13 @@ public:
   Standard_EXPORT bool InitFromJson(const Standard_SStream& theSStream, int& theStreamPos);
 
 private:
+  //! Returns true if the square norm theSqMod is not null and is finite (NaN is rejected too).
+  static constexpr bool isNormValid(const double theSqMod)
+  {
+    return theSqMod > gp::Resolution() * gp::Resolution()
+           && theSqMod <= std::numeric_limits<double>::max();
+  }
+
   gp_XYZ coord;
 };
 
@@ -361,8 +370,8 @@ inline constexpr gp_Dir::gp_Dir(const double theXv, const double theYv, const do
   }
 
   // Slow path: runtime only (sqrt not constexpr - compile error if reached in constexpr context)
-  Standard_ConstructionError_Raise_if(aSqMod <= gp::Resolution() * gp::Resolution(),
-                                      "gp_Dir() - input vector has zero norm");
+  Standard_ConstructionError_Raise_if(!isNormValid(aSqMod),
+                                      "gp_Dir() - input vector has zero or not finite norm");
   const double aD = sqrt(aSqMod);
   coord.SetCoord(theXv / aD, theYv / aD, theZv / aD);
 }
@@ -401,8 +410,9 @@ inline constexpr void gp_Dir::SetCoord(const double theXv, const double theYv, c
   }
 
   // Slow path: runtime only (sqrt not constexpr - compile error if reached in constexpr context)
-  Standard_ConstructionError_Raise_if(aSqMod <= gp::Resolution() * gp::Resolution(),
-                                      "gp_Dir::SetCoord() - input vector has zero norm");
+  Standard_ConstructionError_Raise_if(
+    !isNormValid(aSqMod),
+    "gp_Dir::SetCoord() - input vector has zero or not finite norm");
   const double aD = sqrt(aSqMod);
   coord.SetCoord(theXv / aD, theYv / aD, theZv / aD);
 }
@@ -449,8 +459,9 @@ inline constexpr void gp_Dir::Cross(const gp_Dir& theRight)
   }
 
   // Slow path: runtime only (sqrt not constexpr - compile error if reached in constexpr context)
-  Standard_ConstructionError_Raise_if(aSqMod <= gp::Resolution() * gp::Resolution(),
-                                      "gp_Dir::Cross() - result vector has zero norm");
+  Standard_ConstructionError_Raise_if(
+    !isNormValid(aSqMod),
+    "gp_Dir::Cross() - result vector has zero or not finite norm");
   coord.Divide(sqrt(aSqMod));
 }
 
@@ -477,8 +488,9 @@ inline constexpr void gp_Dir::CrossCross(const gp_Dir& theV1, const gp_Dir& theV
   }
 
   // Slow path: runtime only (sqrt not constexpr - compile error if reached in constexpr context)
-  Standard_ConstructionError_Raise_if(aSqMod <= gp::Resolution() * gp::Resolution(),
-                                      "gp_Dir::CrossCross() - result vector has zero norm");
+  Standard_ConstructionError_Raise_if(
+    !isNormValid(aSqMod),
+    "gp_Dir::CrossCross() - result vector has zero or not finite norm");
   coord.Divide(sqrt(aSqMod));
 }
 

@@ -20,6 +20,8 @@
 #include <Standard_DomainError.hxx>
 #include <Standard_OutOfRange.hxx>
 
+#include <limits>
+
 class gp_Vec2d;
 class gp_Ax2d;
 class gp_Trsf2d;
@@ -279,6 +281,13 @@ public:
   Standard_EXPORT void DumpJson(Standard_OStream& theOStream, int theDepth = -1) const;
 
 private:
+  //! Returns true if the square norm theSqMod is not null and is finite (NaN is rejected too).
+  static constexpr bool isNormValid(const double theSqMod)
+  {
+    return theSqMod > gp::Resolution() * gp::Resolution()
+           && theSqMod <= std::numeric_limits<double>::max();
+  }
+
   gp_XY coord;
 };
 
@@ -313,8 +322,8 @@ inline constexpr gp_Dir2d::gp_Dir2d(const double theXv, const double theYv)
   }
 
   // Slow path: runtime only (sqrt not constexpr - compile error if reached in constexpr context)
-  Standard_ConstructionError_Raise_if(aSqMod <= gp::Resolution() * gp::Resolution(),
-                                      "gp_Dir2d() - input vector has zero norm");
+  Standard_ConstructionError_Raise_if(!isNormValid(aSqMod),
+                                      "gp_Dir2d() - input vector has zero or not finite norm");
   const double aD = sqrt(aSqMod);
   coord.SetCoord(theXv / aD, theYv / aD);
 }
@@ -349,8 +358,9 @@ inline constexpr void gp_Dir2d::SetCoord(const double theXv, const double theYv)
   }
 
   // Slow path: runtime only (sqrt not constexpr - compile error if reached in constexpr context)
-  Standard_ConstructionError_Raise_if(aSqMod <= gp::Resolution() * gp::Resolution(),
-                                      "gp_Dir2d::SetCoord() - result vector has zero norm");
+  Standard_ConstructionError_Raise_if(
+    !isNormValid(aSqMod),
+    "gp_Dir2d::SetCoord() - result vector has zero or not finite norm");
   const double aD = sqrt(aSqMod);
   coord.SetCoord(theXv / aD, theYv / aD);
 }
