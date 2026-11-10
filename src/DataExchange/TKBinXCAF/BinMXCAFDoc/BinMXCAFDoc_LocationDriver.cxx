@@ -28,8 +28,16 @@
 #include <TopLoc_Datum3D.hxx>
 #include <TopLoc_Location.hxx>
 #include <XCAFDoc_Location.hxx>
+#include <NCollection_Vector.hxx>
 
 IMPLEMENT_STANDARD_RTTIEXT(BinMXCAFDoc_LocationDriver, BinMDF_ADriver)
+
+namespace
+{
+//! Maximal number of items of a location read from a document. Composing and destroying a
+//! location recurse once per item.
+constexpr int THE_MAX_LOCATION_ITEMS = 1000;
+} // namespace
 
 // #include <Precision.hxx>
 //=================================================================================================
@@ -86,18 +94,54 @@ bool BinMXCAFDoc_LocationDriver::Translate(const BinObjMgt_Persistent& theSource
     return true;
   }
 
-  int anId = 0;
-  theSource >> anId;
-
-  if (anId == 0)
+  // The items are read in a loop: reading them recursively let a damaged or crafted document,
+  // a few bytes per item, overflow the stack. A location written by OCCT has one item per
+  // elementary location it is composed of.
+  NCollection_Vector<TopLoc_Location> anItems;
+  for (;;)
   {
-    return true;
+    int anId = 0;
+    theSource >> anId;
+    // at the end of the data the value is left unchanged: a truncated location is not an identity
+    if (theSource.IsError())
+    {
+      return false;
+    }
+    if (anId == 0)
+    {
+      break;
+    }
+    if (anItems.Length() >= THE_MAX_LOCATION_ITEMS)
+    {
+      return false;
+    }
+    occ::handle<TopLoc_Datum3D> aDatum;
+    int                         aPower = 0;
+    if (!readItem(theSource, anId, theMap, aDatum, aPower))
+    {
+      return false;
+    }
+    anItems.Append(TopLoc_Location(aDatum).Powered(aPower));
   }
 
-  if (!myNSDriver.IsNull() && myNSDriver->IsQuickPart())
-  { // read directly from the stream
+  // compose as the recursive reading did: the item read first is applied last
+  TopLoc_Location aLoc;
+  for (int anIndex = anItems.Upper(); anIndex >= anItems.Lower(); --anIndex)
+  {
+    aLoc = aLoc * anItems.Value(anIndex);
   }
+  theLoc = aLoc;
+  return true;
+}
 
+//=================================================================================================
+
+bool BinMXCAFDoc_LocationDriver::readItem(const BinObjMgt_Persistent&  theSource,
+                                          const int                    theId,
+                                          BinObjMgt_RRelocationTable&  theMap,
+                                          occ::handle<TopLoc_Datum3D>& theDatum,
+                                          int&                         thePower) const
+{
   int aFileVer = theMap.GetHeaderData()->StorageVersion().IntegerValue();
   if (aFileVer >= TDocStd_FormatVersion_VERSION_6 && myNSDriver.IsNull())
   {
@@ -109,7 +153,7 @@ bool BinMXCAFDoc_LocationDriver::Translate(const BinObjMgt_Persistent& theSource
 
   if (aFileVer >= TDocStd_FormatVersion_VERSION_6)
   {
-    const TopLoc_Location& aLoc = myNSDriver->GetShapesLocations().Location(anId);
+    const TopLoc_Location& aLoc = myNSDriver->GetShapesLocations().Location(theId);
     aPower                      = aLoc.FirstPower();
     aDatum                      = aLoc.FirstDatum();
   }
@@ -127,7 +171,8 @@ bool BinMXCAFDoc_LocationDriver::Translate(const BinObjMgt_Persistent& theSource
       {
         aDatum = occ::down_cast<TopLoc_Datum3D>(theMap.Find(aDatumID));
       }
-      else
+      // the datums share the identifiers of the attributes: another object is not a datum
+      if (aDatum.IsNull())
       {
         return false;
       }
@@ -137,11 +182,11 @@ bool BinMXCAFDoc_LocationDriver::Translate(const BinObjMgt_Persistent& theSource
       // read the datum's transformation
       gp_Trsf aTrsf;
 
-      double aScaleFactor;
+      double aScaleFactor = 1.0;
       theSource >> aScaleFactor;
       aTrsf.SetScaleFactor(aScaleFactor);
 
-      int aForm;
+      int aForm = 0;
       theSource >> aForm;
       aTrsf.SetForm((gp_TrsfForm)aForm);
 
@@ -151,13 +196,13 @@ bool BinMXCAFDoc_LocationDriver::Translate(const BinObjMgt_Persistent& theSource
       {
         for (C = 1; C <= 3; C++)
         {
-          double aVal;
+          double aVal = 0.0;
           theSource >> aVal;
           aMat.SetValue(R, C, aVal);
         }
       }
 
-      double x, y, z;
+      double x = 0.0, y = 0.0, z = 0.0;
       theSource >> x >> y >> z;
       gp_XYZ& aLoc = (gp_XYZ&)aTrsf.TranslationPart();
       aLoc.SetX(x);
@@ -169,12 +214,13 @@ bool BinMXCAFDoc_LocationDriver::Translate(const BinObjMgt_Persistent& theSource
     }
   }
 
-  //  Get Next Location
-  TopLoc_Location aNextLoc;
-  Translate(theSource, aNextLoc, theMap);
-
-  //  Calculate the result
-  theLoc = aNextLoc * TopLoc_Location(aDatum).Powered(aPower);
+  if (theSource.IsError())
+  {
+    // the item is truncated
+    return false;
+  }
+  theDatum = aDatum;
+  thePower = aPower;
   return true;
 }
 

@@ -53,6 +53,35 @@ IMPLEMENT_STANDARD_RTTIEXT(BinLDrivers_DocumentRetrievalDriver, PCDM_RetrievalDr
 
 #define DATATYPE_MIGRATION
 
+namespace
+{
+
+//! Labels are read recursively, one level per nested label of a few bytes; the label tree is
+//! also destroyed recursively. The limit stops a damaged or crafted document before the stack
+//! overflows. One level takes about 1 KiB of stack (Release, MSVC; a 1 MiB stack overflowed at
+//! about 1040 levels): 300 levels leave room for the attributes read at the deepest level, such
+//! as nested shapes (BinTools_ReadLimits).
+constexpr int THE_MAX_LABEL_DEPTH = 300;
+
+//! Depth of the label being read by this thread.
+thread_local int THE_LABEL_DEPTH = 0;
+
+//! Counts a label being read by this thread.
+class LabelDepthGuard
+{
+public:
+  LabelDepthGuard() { ++THE_LABEL_DEPTH; }
+
+  ~LabelDepthGuard() { --THE_LABEL_DEPTH; }
+
+  bool IsTooDeep() const { return THE_LABEL_DEPTH > THE_MAX_LABEL_DEPTH; }
+
+  LabelDepthGuard(const LabelDepthGuard&)            = delete;
+  LabelDepthGuard& operator=(const LabelDepthGuard&) = delete;
+};
+
+} // namespace
+
 // #define DATATYPE_MIGRATION_DEB
 //=================================================================================================
 
@@ -244,6 +273,17 @@ void BinLDrivers_DocumentRetrievalDriver::Read(Standard_IStream&                
   occ::handle<TDF_Data> aData =
     (!theFilter.IsNull() && theFilter->IsAppendMode()) ? aDoc->GetData() : new TDF_Data();
 
+  // The relocation table holds the attributes read into aData. A reading stopped early (user
+  // break, exception) kept them after aData and its labels were released: the next reading with
+  // this driver destroyed them and used the freed labels (TNaming_NamedShape::Clear). Declared
+  // after aData, the cleaner empties the table before aData is released on every way out.
+  struct RelocationCleaner
+  {
+    BinLDrivers_DocumentRetrievalDriver& myDriver;
+
+    ~RelocationCleaner() { myDriver.Clear(); }
+  } aRelocationCleaner{*this};
+
   Message_ProgressScope aPS(theRange, "Reading data", 3);
   bool                  aQuickPart = IsQuickPart(aFileVer);
 
@@ -429,6 +469,14 @@ int BinLDrivers_DocumentRetrievalDriver::ReadSubTree(
 {
   int                        nbRead = 0;
   TCollection_ExtendedString aMethStr("BinLDrivers_DocumentRetrievalDriver: ");
+
+  LabelDepthGuard aDepth;
+  if (aDepth.IsTooDeep())
+  {
+    myMsgDriver->Send(aMethStr + "error: labels nested too deeply", Message_Fail);
+    myReaderStatus = PCDM_RS_UnrecognizedFileFormat;
+    return -1;
+  }
 
   Message_ProgressScope aPS(theRange, "Reading sub tree", 2, true);
 

@@ -28,6 +28,7 @@ class Message_Messenger;
 class TDF_Attribute;
 class BinObjMgt_Persistent;
 class TopLoc_Location;
+class TopLoc_Datum3D;
 
 class BinMXCAFDoc_LocationDriver : public BinMDF_ADriver
 {
@@ -62,6 +63,14 @@ public:
   }
 
   DEFINE_STANDARD_RTTIEXT(BinMXCAFDoc_LocationDriver, BinMDF_ADriver)
+
+private:
+  //! Reads the datum and the power of the item theId of a location.
+  bool readItem(const BinObjMgt_Persistent&  theSource,
+                const int                    theId,
+                BinObjMgt_RRelocationTable&  theMap,
+                occ::handle<TopLoc_Datum3D>& theDatum,
+                int&                         thePower) const;
 
 private:
   occ::handle<BinMNaming_NamedShapeDriver> myNSDriver;

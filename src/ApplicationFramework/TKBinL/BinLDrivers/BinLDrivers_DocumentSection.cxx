@@ -183,13 +183,18 @@ bool BinLDrivers_DocumentSection::ReadTOC(BinLDrivers_DocumentSection& theSectio
   char             aBuf[THE_BUF_SIZE];
   int              aNameBufferSize;
   theStream.read(reinterpret_cast<char*>(&aNameBufferSize), sizeof(int));
-  if (theStream.eof() || aNameBufferSize > THE_BUF_SIZE)
+  if (theStream.eof())
   {
     return false;
   }
 #ifdef DO_INVERSE
   aNameBufferSize = InverseSize(aNameBufferSize);
 #endif
+  // the terminating null needs one more byte than the name
+  if (aNameBufferSize >= THE_BUF_SIZE)
+  {
+    return false;
+  }
   if (aNameBufferSize > 0)
   {
     theStream.read(&aBuf[0], static_cast<size_t>(aNameBufferSize));
