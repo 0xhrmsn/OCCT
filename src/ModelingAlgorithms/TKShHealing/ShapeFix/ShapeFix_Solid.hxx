@@ -56,7 +56,9 @@ public:
   Standard_EXPORT virtual bool Perform(
     const Message_ProgressRange& theProgress = Message_ProgressRange());
 
-  //! Calls MakeSolid and orients the solid to be "not infinite"
+  //! Calls MakeSolid and orients the solid to be "not infinite".
+  //! An open shell bounds no volume: unless CreateOpenSolidMode() is set, it gives a null solid
+  //! and the status FAIL1.
   Standard_EXPORT TopoDS_Solid SolidFromShell(const TopoDS_Shell& shell);
 
   //! Returns the status of the last Fix.

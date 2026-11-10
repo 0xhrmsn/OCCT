@@ -22,6 +22,7 @@
 #include <ShapeAnalysis_FreeBounds.hxx>
 #include <ShapeBuild_ReShape.hxx>
 #include <ShapeExtend.hxx>
+#include <TopExp_Explorer.hxx>
 #include <ShapeExtend_WireData.hxx>
 #include <ShapeFix_Shell.hxx>
 #include <ShapeFix_Solid.hxx>
@@ -654,6 +655,19 @@ TopoDS_Shape ShapeFix_Solid::Shape()
 
 TopoDS_Solid ShapeFix_Solid::SolidFromShell(const TopoDS_Shell& shell)
 {
+  if (!myCreateOpenSolidMode)
+  {
+    // an open shell does not bound a volume: the solid built on it was invalid, without status
+    // (same test of the free boundaries as Perform())
+    ShapeAnalysis_FreeBounds aFreeBounds(shell);
+    if (TopExp_Explorer(aFreeBounds.GetClosedWires(), TopAbs_EDGE).More()
+        || TopExp_Explorer(aFreeBounds.GetOpenWires(), TopAbs_EDGE).More())
+    {
+      myStatus |= ShapeExtend::EncodeStatus(ShapeExtend_FAIL1);
+      return TopoDS_Solid();
+    }
+  }
+
   TopoDS_Shell sh = shell;
   if (!sh.Free())
   {

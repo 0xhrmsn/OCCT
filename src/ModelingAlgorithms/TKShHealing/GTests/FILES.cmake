@@ -10,6 +10,7 @@ set(OCCT_TKShHealing_GTests_FILES
   ShapeConstruct_ProjectCurveOnSurface_Test.cxx
   ShapeFix_Face_Test.cxx
   ShapeFix_Shape_Test.cxx
+  ShapeFix_Solid_Test.cxx
   ShapeUpgrade_FaceDivide_Test.cxx
   ShapeUpgrade_UnifySameDomain_Test.cxx
 )
