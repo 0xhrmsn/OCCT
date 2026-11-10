@@ -287,11 +287,13 @@ TopoDS_Edge ChFi2d_Builder::ModifyFillet(const TopoDS_Edge& Fillet, const double
 
 //=================================================================================================
 
-TopoDS_Vertex ChFi2d_Builder::RemoveFillet(const TopoDS_Edge& Fillet)
+TopoDS_Vertex ChFi2d_Builder::RemoveFillet(const TopoDS_Edge& theFillet)
 {
-  TopoDS_Vertex commonVertex;
-  int           i      = 1;
-  int           IsFind = false;
+  // a copy: theFillet can be an item of the sequence of fillets or of the history, removed below
+  const TopoDS_Edge Fillet = theFillet;
+  TopoDS_Vertex     commonVertex;
+  int               i      = 1;
+  int               IsFind = false;
   while (i <= fillets.Length())
   {
     const TopoDS_Edge& aFillet = TopoDS::Edge(fillets.Value(i));

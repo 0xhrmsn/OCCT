@@ -251,12 +251,14 @@ void ChFi2d_Builder::ComputeChamfer(const TopoDS_Vertex& V,
 
 TopoDS_Edge ChFi2d_Builder::ModifyChamfer(const TopoDS_Edge& Chamfer,
                                           const TopoDS_Edge& /*E1*/,
-                                          const TopoDS_Edge& E2,
+                                          const TopoDS_Edge& theE2,
                                           const double       D1,
                                           const double       D2)
 {
-  TopoDS_Vertex aVertex = RemoveChamfer(Chamfer);
-  TopoDS_Edge   adjEdge1, adjEdge2;
+  // a copy: theE2 can be an edge of the history (DescendantEdge()), changed by RemoveChamfer()
+  const TopoDS_Edge E2      = theE2;
+  TopoDS_Vertex     aVertex = RemoveChamfer(Chamfer);
+  TopoDS_Edge       adjEdge1, adjEdge2;
   status = ChFi2d::FindConnectedEdges(newFace, aVertex, adjEdge1, adjEdge2);
   TopoDS_Edge aChamfer;
   if (status == ChFi2d_ConnexionError)
@@ -281,12 +283,14 @@ TopoDS_Edge ChFi2d_Builder::ModifyChamfer(const TopoDS_Edge& Chamfer,
 //=================================================================================================
 
 TopoDS_Edge ChFi2d_Builder::ModifyChamfer(const TopoDS_Edge& Chamfer,
-                                          const TopoDS_Edge& E,
+                                          const TopoDS_Edge& theE,
                                           const double       D,
                                           const double       Ang)
 {
-  TopoDS_Vertex aVertex = RemoveChamfer(Chamfer);
-  TopoDS_Edge   adjEdge1, adjEdge2;
+  // a copy: theE can be an edge of the history (DescendantEdge()), changed by RemoveChamfer()
+  const TopoDS_Edge E       = theE;
+  TopoDS_Vertex     aVertex = RemoveChamfer(Chamfer);
+  TopoDS_Edge       adjEdge1, adjEdge2;
   status = ChFi2d::FindConnectedEdges(newFace, aVertex, adjEdge1, adjEdge2);
   TopoDS_Edge aChamfer;
   if (status == ChFi2d_ConnexionError)
@@ -307,9 +311,11 @@ TopoDS_Edge ChFi2d_Builder::ModifyChamfer(const TopoDS_Edge& Chamfer,
 
 //=================================================================================================
 
-TopoDS_Vertex ChFi2d_Builder::RemoveChamfer(const TopoDS_Edge& Chamfer)
+TopoDS_Vertex ChFi2d_Builder::RemoveChamfer(const TopoDS_Edge& theChamfer)
 {
-  TopoDS_Vertex commonVertex;
+  // a copy: theChamfer can be an item of the sequence of chamfers or of the history, removed below
+  const TopoDS_Edge Chamfer = theChamfer;
+  TopoDS_Vertex     commonVertex;
 
   int i      = 1;
   int IsFind = false;
