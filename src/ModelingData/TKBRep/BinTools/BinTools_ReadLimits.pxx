@@ -1,0 +1,88 @@
+// Copyright (c) 2026 OPEN CASCADE SAS
+//
+// This file is part of Open CASCADE Technology software library.
+//
+// This library is free software; you can redistribute it and/or modify it under
+// the terms of the GNU Lesser General Public License version 2.1 as published
+// by the Free Software Foundation, with special exception defined in the file
+// OCCT_LGPL_EXCEPTION.txt. Consult the file LICENSE_LGPL_21.txt included in OCCT
+// distribution for complete text of the license and disclaimer of any warranty.
+//
+// Alternatively, this file may be used under the terms of Open CASCADE
+// commercial license or contractual agreement.
+
+#ifndef _BinTools_ReadLimits_HeaderFile
+#define _BinTools_ReadLimits_HeaderFile
+
+#include <Standard_Failure.hxx>
+#include <NCollection_Vector.hxx>
+#include <TopLoc_Location.hxx>
+
+//! Limits of the BinTools readers against damaged or crafted streams.
+namespace BinTools_ReadLimits
+{
+
+//! Shapes, locations and geometries are read recursively: a sub-shape, an item of a location, the
+//! basis of a trimmed or offset geometry and the object of a reference are read inside the reading
+//! of their owner. Models nest them a few tens of levels; a damaged or crafted stream can nest
+//! them until the stack overflows. All BinTools readers share one count, so the deepest mix stays
+//! within the limit. One level takes up to about 1.4 KiB of stack (BinTools_ShapeReader::ReadShape,
+//! Release, MSVC): 200 levels use less than a third of a 1 MiB stack.
+constexpr int THE_MAX_NESTING = 200;
+
+//! Number of objects being read by this thread.
+inline thread_local int THE_NESTING = 0;
+
+//! Counts an object being read by this thread and stops a too deep nesting.
+class NestingGuard
+{
+public:
+  NestingGuard()
+  {
+    if (THE_NESTING >= THE_MAX_NESTING)
+    {
+      throw Standard_Failure("BinTools: objects nested too deeply");
+    }
+    ++THE_NESTING;
+  }
+
+  ~NestingGuard() { --THE_NESTING; }
+
+  NestingGuard(const NestingGuard&)            = delete;
+  NestingGuard& operator=(const NestingGuard&) = delete;
+};
+
+//! OCCT writes a composed location as powers of elementary locations. A composed location used as
+//! an item, or a very long chain of items, makes TopLoc_Location::Powered, Multiplied and the
+//! destruction of the chain recurse as deep as the stream asks.
+constexpr int THE_MAX_LOCATION_ITEMS = 1000;
+
+//! Checks the theNbItems-th item theItem of a composed location.
+inline void CheckLocationItem(const TopLoc_Location& theItem, const int theNbItems)
+{
+  if (!theItem.NextLocation().IsIdentity() || theItem.FirstPower() != 1)
+  {
+    throw Standard_Failure("BinTools: a location item is not elementary");
+  }
+  if (theNbItems > THE_MAX_LOCATION_ITEMS)
+  {
+    throw Standard_Failure("BinTools: too many items in a location");
+  }
+}
+
+//! Composes the items of a location read in the order of the stream: the item read first is
+//! applied last, as by "aLoc = anItem * aLoc" for each item. Multiplying by one item at a time on
+//! the right does not recurse along the whole location nor copy it for each item.
+inline TopLoc_Location ComposeItems(const NCollection_Vector<TopLoc_Location>& theItems)
+{
+  TopLoc_Location aLoc;
+  for (int anIndex = theItems.Upper(); anIndex >= theItems.Lower(); --anIndex)
+  {
+    aLoc = aLoc * theItems.Value(anIndex);
+  }
+  return aLoc;
+}
+
+} // namespace BinTools_ReadLimits
+
+#endif // _BinTools_ReadLimits_HeaderFile

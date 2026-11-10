@@ -37,6 +37,7 @@
 #include <Standard_Integer.hxx>
 #include <Message_ProgressScope.hxx>
 #include <iomanip>
+#include "BinTools_ReadLimits.pxx"
 
 #define LINE 1
 #define CIRCLE 2
@@ -551,6 +552,10 @@ static Standard_IStream& operator>>(Standard_IStream& IS, occ::handle<Geom_Offse
 
 Standard_IStream& BinTools_CurveSet::ReadCurve(Standard_IStream& IS, occ::handle<Geom_Curve>& C)
 {
+  // a trimmed or offset geometry reads its basis geometry through this function
+  BinTools_ReadLimits::NestingGuard aNesting;
+
+  std::string aMessage;
   try
   {
     OCC_CATCH_SIGNALS
@@ -630,11 +635,17 @@ Standard_IStream& BinTools_CurveSet::ReadCurve(Standard_IStream& IS, occ::handle
   }
   catch (Standard_Failure const& anException)
   {
-    C = nullptr;
     Standard_SStream aMsg;
     aMsg << "EXCEPTION in BinTools_CurveSet::ReadCurve(..)" << '\n';
     aMsg << anException << '\n';
-    throw Standard_Failure(aMsg.str().c_str());
+    aMessage = aMsg.str();
+  }
+  // thrown after the handler: a throw inside it keeps the stack of the failed reading, so nested
+  // trimmed or offset geometries would keep the stacks of all their levels
+  if (!aMessage.empty())
+  {
+    C = nullptr;
+    throw Standard_Failure(aMessage.c_str());
   }
   return IS;
 }

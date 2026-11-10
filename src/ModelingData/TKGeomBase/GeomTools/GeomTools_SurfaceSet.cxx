@@ -46,6 +46,33 @@
 #include <Standard_Integer.hxx>
 #include <NCollection_Array1.hxx>
 
+namespace
+{
+//! Trimmed and offset geometries are read with their basis geometry. OCCT writes a few levels;
+//! a damaged or crafted file can nest them until the stack overflows.
+constexpr int    THE_MAX_NESTING = 100;
+thread_local int THE_NESTING     = 0;
+
+//! Counts the geometries being read by this thread and stops a too deep nesting.
+class NestingGuard
+{
+public:
+  NestingGuard()
+  {
+    if (THE_NESTING >= THE_MAX_NESTING)
+    {
+      throw Standard_Failure("GeomTools_SurfaceSet::ReadSurface: geometry nested too deeply");
+    }
+    ++THE_NESTING;
+  }
+
+  ~NestingGuard() { --THE_NESTING; }
+
+  NestingGuard(const NestingGuard&)            = delete;
+  NestingGuard& operator=(const NestingGuard&) = delete;
+};
+} // namespace
+
 #define PLANE 1
 #define CYLINDER 2
 #define CONE 3
@@ -972,6 +999,10 @@ static Standard_IStream& operator>>(Standard_IStream&                           
   {
     return IS;
   }
+  if (C.IsNull())
+  {
+    throw Standard_Failure("GeomTools_CurveSet::ReadCurve: the basis geometry is not read");
+  }
   S = new Geom_SurfaceOfLinearExtrusion(C, D);
   return IS;
 }
@@ -987,6 +1018,10 @@ static Standard_IStream& operator>>(Standard_IStream& IS, occ::handle<Geom_Surfa
   if (IS.fail())
   {
     return IS;
+  }
+  if (C.IsNull())
+  {
+    throw Standard_Failure("GeomTools_CurveSet::ReadCurve: the basis geometry is not read");
   }
   S = new Geom_SurfaceOfRevolution(C, gp_Ax1(P, D));
   return IS;
@@ -1130,6 +1165,10 @@ static Standard_IStream& operator>>(Standard_IStream&                           
   {
     return IS;
   }
+  if (BS.IsNull())
+  {
+    throw Standard_Failure("GeomTools_SurfaceSet::ReadSurface: the basis geometry is not read");
+  }
   S = new Geom_RectangularTrimmedSurface(BS, U1, U2, V1, V2);
   return IS;
 }
@@ -1145,6 +1184,10 @@ static Standard_IStream& operator>>(Standard_IStream& IS, occ::handle<Geom_Offse
   {
     return IS;
   }
+  if (BS.IsNull())
+  {
+    throw Standard_Failure("GeomTools_SurfaceSet::ReadSurface: the basis geometry is not read");
+  }
   S = new Geom_OffsetSurface(BS, O, true);
   return IS;
 }
@@ -1153,6 +1196,9 @@ static Standard_IStream& operator>>(Standard_IStream& IS, occ::handle<Geom_Offse
 
 occ::handle<Geom_Surface> GeomTools_SurfaceSet::ReadSurface(Standard_IStream& IS)
 {
+  // a trimmed or offset geometry reads its basis geometry through this function
+  NestingGuard aNesting;
+
   int stype;
 
   occ::handle<Geom_Surface> S;
@@ -1291,6 +1337,12 @@ void GeomTools_SurfaceSet::Read(Standard_IStream& IS, const Message_ProgressRang
     if (IS.fail())
     {
       return;
+    }
+    // the writer never writes a null entry: a null one is damaged or of an unknown type, and a
+    // second null would be merged with the first one, shifting the indices of all the following
+    if (S.IsNull())
+    {
+      throw Standard_Failure("GeomTools_SurfaceSet::Read: a surface is not read");
     }
     myMap.Add(S);
   }

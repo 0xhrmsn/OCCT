@@ -237,7 +237,8 @@ TEST(BRepTools_Test, WriteRead_TolerancesExactLocationPrecise)
   {
     for (int aCol = 1; aCol <= 4; ++aCol)
     {
-      aMaxDiff = std::max(aMaxDiff, std::abs(aReadTrsf.Value(aRow, aCol) - aTrsf.Value(aRow, aCol)));
+      aMaxDiff =
+        std::max(aMaxDiff, std::abs(aReadTrsf.Value(aRow, aCol) - aTrsf.Value(aRow, aCol)));
     }
   }
   // Read() rebuilds the transformation with gp_Trsf::SetValues(), which renormalises the matrix,
@@ -278,8 +279,8 @@ bool allFacesHaveNormals(const TopoDS_Shape& theShape)
 }
 
 //! Meshed box with normals on every face triangulation. Several faces are needed: an edge shared by
-//! two faces carries a polygon on the neighbour's triangulation, which is how that triangulation got
-//! registered before its own face (a single-face sphere does not show the defect).
+//! two faces carries a polygon on the neighbour's triangulation, which is how that triangulation
+//! got registered before its own face (a single-face sphere does not show the defect).
 TopoDS_Shape meshedBoxWithNormals()
 {
   const TopoDS_Shape aBox = BRepPrimAPI_MakeBox(10.0, 20.0, 30.0).Shape();
@@ -385,5 +386,104 @@ TEST(BRepTools_Test, Read_LongWord_Text)
     {
       EXPECT_TRUE(isFailed || aRead.IsNull()) << aWord.Line;
     }
+  }
+}
+
+
+// A damaged or crafted file nests trimmed curves and surfaces, which are read with their basis
+// geometry: the reader stops at a fixed depth instead of overflowing the stack. A nesting written
+// by OCCT stays readable.
+TEST(BRepTools_Test, Read_NestedTrimmedGeometry_Text)
+{
+  const TopoDS_Shape aBox = BRepPrimAPI_MakeBox(10.0, 20.0, 30.0).Shape();
+  std::ostringstream anOut;
+  BRepTools::Write(aBox, anOut, false, false, TopTools_FormatVersion_CURRENT);
+  const std::string anIntact = anOut.str();
+
+  struct Section
+  {
+    const char* Header;
+    const char* Record;
+  };
+
+  const Section aSections[] = {{"\nCurve2ds ", "8 0 1\n"},
+                               {"\nCurves ", "8 0 1\n"},
+                               {"\nSurfaces ", "10 0 1 0 1\n"}};
+  for (const Section& aSection : aSections)
+  {
+    for (const int aNb : {50, 100000})
+    {
+      size_t aPos = anIntact.find(aSection.Header);
+      ASSERT_NE(aPos, std::string::npos) << aSection.Header;
+      aPos = anIntact.find('\n', aPos + 1) + 1;
+      std::string aNested;
+      for (int i = 0; i < aNb; ++i)
+      {
+        aNested += aSection.Record;
+      }
+      std::istringstream anIn(anIntact.substr(0, aPos) + aNested + anIntact.substr(aPos));
+      TopoDS_Shape       aRead;
+      bool               isFailed = false;
+      try
+      {
+        BRepTools::Read(aRead, anIn, BRep_Builder());
+      }
+      catch (const Standard_Failure&)
+      {
+        isFailed = true;
+      }
+      // without the limit, the deep nesting stops the process before this point
+      if (aNb == 50)
+      {
+        EXPECT_FALSE(isFailed) << aSection.Header;
+        EXPECT_FALSE(aRead.IsNull()) << aSection.Header;
+      }
+      else
+      {
+        // the table stops at the entry that is not read, instead of shifting the next ones
+        EXPECT_TRUE(isFailed) << aSection.Header;
+      }
+    }
+  }
+}
+
+// A damaged or crafted file composes a location of a composed location raised to a large power,
+// or of a very long chain of items: TopLoc_Location::Powered and Multiplied recursed as deep as the
+// file asked. Such a location is rejected.
+TEST(BRepTools_Test, Read_ComposedLocation_Text)
+{
+  const TopoDS_Shape aBox = BRepPrimAPI_MakeBox(10.0, 20.0, 30.0).Shape();
+  std::ostringstream anOut;
+  BRepTools::Write(aBox, anOut, false, false, TopTools_FormatVersion_CURRENT);
+  const std::string anIntact = anOut.str();
+  const std::string anEmpty  = "\nLocations 0\n";
+  const size_t      aPos     = anIntact.find(anEmpty);
+  ASSERT_NE(aPos, std::string::npos);
+
+  // two translations, then the composed location
+  const std::string anElementary = "1\n1 0 0 1\n0 1 0 0\n0 0 1 0\n1\n1 0 0 0\n0 1 0 1\n0 0 1 0\n";
+  std::string       aLong        = "2";
+  for (int i = 0; i < 10000; ++i)
+  {
+    aLong += " 1 1 2 1";
+  }
+  const std::string aTables[] = {"\nLocations 4\n" + anElementary + "2 1 1 2 1 0\n2 3 1000000 0\n",
+                                 "\nLocations 3\n" + anElementary + aLong + " 0\n"};
+  for (const std::string& aTable : aTables)
+  {
+    std::string aData = anIntact;
+    aData.replace(aPos, anEmpty.size(), aTable);
+    std::istringstream anIn(aData);
+    TopoDS_Shape       aRead;
+    bool               isFailed = false;
+    try
+    {
+      BRepTools::Read(aRead, anIn, BRep_Builder());
+    }
+    catch (const Standard_Failure&)
+    {
+      isFailed = true;
+    }
+    EXPECT_TRUE(isFailed) << aTable.substr(0, 40);
   }
 }

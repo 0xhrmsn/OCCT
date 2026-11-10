@@ -16,25 +16,35 @@
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRep_Tool.hxx>
+#include <BRep_Builder.hxx>
 #include <BinTools.hxx>
+#include <BinTools_IStream.hxx>
+#include <BinTools_ObjectType.hxx>
 #include <BinTools_OStream.hxx>
 #include <BinTools_ShapeReader.hxx>
 #include <BinTools_ShapeWriter.hxx>
 #include <Geom2d_BSplineCurve.hxx>
 #include <Geom_BSplineCurve.hxx>
 #include <Geom_BSplineSurface.hxx>
+#include <Geom_BezierSurface.hxx>
 #include <Geom_CylindricalSurface.hxx>
 #include <Geom_Plane.hxx>
 #include <Poly_Triangulation.hxx>
 #include <Standard_Failure.hxx>
 #include <TopoDS.hxx>
+#include <TopoDS_Compound.hxx>
+#include <TopoDS_Iterator.hxx>
 #include <TopoDS_Edge.hxx>
 #include <TopoDS_Face.hxx>
 #include <gp_Ax3.hxx>
+#include <TopLoc_Location.hxx>
+#include <gp_Trsf.hxx>
+#include <gp_Vec.hxx>
 
 #include <BRepMesh_IncrementalMesh.hxx>
 
 #include <cctype>
+#include <cstdint>
 #include <cstring>
 #include <sstream>
 #include <string>
@@ -419,5 +429,440 @@ TEST(BinTools_ReadLimitsTest, ShapeSet_LongSectionHeader)
       isFailed = true;
     }
     EXPECT_TRUE(isFailed) << aHeader;
+  }
+}
+
+namespace
+{
+
+//! Inserts theNb nested trimmed records (type byte, theNbReals reals 0 or 1, then the basis
+//! geometry) before the first geometry of the section theHeader.
+std::string nestTrimmed(const std::string& theData,
+                        const char*        theHeader,
+                        const uint8_t      theType,
+                        const int          theNbReals,
+                        const int          theNb)
+{
+  const std::string aWord = std::string(theHeader) + " ";
+  size_t            aPos  = theData.find(aWord);
+  while (aPos != std::string::npos && aPos > 0 && isalpha((unsigned char)theData[aPos - 1]))
+  {
+    aPos = theData.find(aWord, aPos + 1);
+  }
+  if (aPos == std::string::npos)
+  {
+    return std::string();
+  }
+  aPos = theData.find('\n', aPos) + 1;
+
+  std::ostringstream aRecord;
+  aRecord.put(char(theType));
+  for (int i = 0; i < theNbReals; ++i)
+  {
+    BinTools::PutReal(aRecord, double(i % 2));
+  }
+  std::string aNested;
+  for (int i = 0; i < theNb; ++i)
+  {
+    aNested += aRecord.str();
+  }
+  return theData.substr(0, aPos) + aNested + theData.substr(aPos);
+}
+
+} // namespace
+
+// A damaged or crafted file nests trimmed curves and surfaces, which are read with their basis
+// geometry: the reader stops at a fixed depth instead of overflowing the stack. A nesting written
+// by OCCT stays readable.
+TEST(BinTools_ReadLimitsTest, ShapeSet_NestedTrimmedGeometry)
+{
+  int                aNbNodes = 0, aNbTriangles = 0;
+  const TopoDS_Face  aFace = meshedFace(aNbNodes, aNbTriangles);
+  std::ostringstream anOut;
+  BinTools::Write(aFace, anOut, false, false, BinTools_FormatVersion_CURRENT);
+  const std::string anIntact = anOut.str();
+
+  struct Section
+  {
+    const char* Header;
+    uint8_t     Type;
+    int         NbReals;
+  };
+
+  const Section aSections[] = {{"Curve2ds", 8, 2}, {"Curves", 8, 2}, {"Surfaces", 10, 4}};
+  for (const Section& aSection : aSections)
+  {
+    for (const int aNb : {50, 100000})
+    {
+      const std::string aData =
+        nestTrimmed(anIntact, aSection.Header, aSection.Type, aSection.NbReals, aNb);
+      ASSERT_FALSE(aData.empty()) << aSection.Header;
+      std::istringstream anIn(aData);
+      TopoDS_Shape       aRead;
+      std::string        aMessage;
+      try
+      {
+        BinTools::Read(aRead, anIn);
+      }
+      catch (const Standard_Failure& theFailure)
+      {
+        aMessage = theFailure.what();
+      }
+      if (aNb == 50)
+      {
+        EXPECT_TRUE(aMessage.empty()) << aSection.Header << ": " << aMessage;
+        EXPECT_FALSE(aRead.IsNull()) << aSection.Header;
+      }
+      else
+      {
+        EXPECT_NE(aMessage.find("nested too deeply"), std::string::npos)
+          << aSection.Header << ": " << aMessage.substr(0, 300);
+      }
+    }
+  }
+}
+
+namespace
+{
+
+//! Reads theData from thePosition with BinTools_ShapeReader and returns the failure message.
+std::string readShapeFrom(const std::string& theData, const std::streamoff thePosition)
+{
+  std::istringstream anIn(theData);
+  anIn.seekg(thePosition);
+  BinTools_ShapeReader aReader;
+  TopoDS_Shape         aShape;
+  try
+  {
+    aReader.Read(anIn, aShape);
+  }
+  catch (const Standard_Failure& theFailure)
+  {
+    return theFailure.what();
+  }
+  return std::string();
+}
+
+//! Bytes of a 32-bit integer and of a 64-bit unsigned integer as BinTools_OStream writes them.
+std::string int32Bytes(const int theValue)
+{
+  return std::string(reinterpret_cast<const char*>(&theValue), sizeof(int));
+}
+
+std::string uint64Bytes(const uint64_t theValue)
+{
+  return std::string(reinterpret_cast<const char*>(&theValue), sizeof(uint64_t));
+}
+
+//! Simple location record: a translation by (theX, theY, 0).
+std::string simpleLocation(const double theX, const double theY)
+{
+  const double aValues[12] = {1., 0., 0., theX, 0., 1., 0., theY, 0., 0., 1., 0.};
+  return std::string(1, char(BinTools_ObjectType_SimpleLocation))
+         + std::string(reinterpret_cast<const char*>(aValues), sizeof(aValues));
+}
+
+//! Reads a location from theData with BinTools_ShapeReader and returns the failure message.
+std::string readLocationFrom(const std::string& theData)
+{
+  std::istringstream   anIn(theData);
+  BinTools_IStream     aStream(anIn);
+  BinTools_ShapeReader aReader;
+  try
+  {
+    aReader.ReadLocation(aStream);
+  }
+  catch (const Standard_Failure& theFailure)
+  {
+    return theFailure.what();
+  }
+  return std::string();
+}
+
+} // namespace
+
+// A damaged or crafted stream of BinTools_ShapeWriter (binary OCAF documents) leads the reader
+// into a cycle of references: the reader stops instead of following it until the stack overflows.
+TEST(BinTools_ReadLimitsTest, ShapeReader_CyclicReference)
+{
+  const char aRef8 = char(BinTools_ObjectType_Reference8);
+
+  // a 64-bit delta that wraps around points to a later reference, which points back
+  {
+    std::string aData(1, char(BinTools_ObjectType_Reference64));
+    aData += uint64Bytes(uint64_t(0) - 9); // target 9: 1 - delta - 1
+    aData += aRef8;
+    aData += char(9); // target 0: 10 - 9 - 1
+    EXPECT_NE(readShapeFrom(aData, 0).find("later position"), std::string::npos);
+  }
+
+  // a sub-shape refers to its compound, which is bound only after its sub-shapes
+  {
+    std::string aData(1, char(BinTools_ObjectType_EndShape + 1)); // compound, forward
+    aData += char(BinTools_ObjectType_EmptyLocation);
+    aData += char(0); // flags
+    aData += aRef8;
+    aData += char(3); // target 0: 4 - 3 - 1
+    EXPECT_NE(readShapeFrom(aData, 0).find("nested too deeply"), std::string::npos);
+  }
+
+  // an item of a location refers to the location record
+  {
+    std::string aData(1, char(BinTools_ObjectType_Location));
+    aData += aRef8;
+    aData += char(1); // target 0: 2 - 1 - 1
+    EXPECT_NE(readLocationFrom(aData).find("nested too deeply"), std::string::npos);
+  }
+
+  // a long chain of references, each to the previous one
+  {
+    const int   aNb = 100000;
+    std::string aChain(1, char(BinTools_ObjectType_EmptyShape));
+    for (int i = 1; i < aNb; ++i)
+    {
+      aChain += aRef8;
+      aChain += char(i == 1 ? 1 : 2);
+    }
+    EXPECT_NE(readShapeFrom(aChain, 2 * (aNb - 1) - 1).find("nested too deeply"),
+              std::string::npos);
+  }
+}
+
+// A damaged or crafted stream composes a location of a composed location raised to a large power:
+// TopLoc_Location::Powered recursed once per unit of the power.
+TEST(BinTools_ReadLimitsTest, ShapeReader_ComposedLocationItem)
+{
+  std::string anInner(1, char(BinTools_ObjectType_Location));
+  anInner += simpleLocation(1., 0.) + int32Bytes(1);
+  anInner += simpleLocation(0., 1.) + int32Bytes(1);
+  anInner += char(BinTools_ObjectType_LocationEnd);
+
+  std::string anOuter(1, char(BinTools_ObjectType_Location));
+  anOuter += anInner + int32Bytes(1000000);
+  anOuter += char(BinTools_ObjectType_LocationEnd);
+  EXPECT_NE(readLocationFrom(anOuter).find("not elementary"), std::string::npos);
+
+  // guard: the inner location alone, as OCCT writes it, is read
+  EXPECT_TRUE(readLocationFrom(anInner).empty());
+}
+
+// A location with a very long chain of items is rejected by both binary readers; a long chain
+// that OCCT models can have is read back.
+TEST(BinTools_ReadLimitsTest, LongLocationChain)
+{
+  gp_Trsf aT1, aT2;
+  aT1.SetTranslation(gp_Vec(1., 0., 0.));
+  aT2.SetTranslation(gp_Vec(0., 1., 0.));
+  const TopLoc_Location aL1(aT1), aL2(aT2);
+  int                   aNbNodes = 0, aNbTriangles = 0;
+  const TopoDS_Face     aFace = meshedFace(aNbNodes, aNbTriangles);
+  for (const int aNbItems : {900, 1001})
+  {
+    TopLoc_Location aLoc;
+    for (int i = 0; i < aNbItems; ++i)
+    {
+      aLoc = aLoc * (i % 2 == 0 ? aL1 : aL2);
+    }
+    const TopoDS_Shape aShape = aFace.Located(aLoc);
+
+    std::ostringstream anOut1;
+    BinTools::Write(aShape, anOut1, false, false, BinTools_FormatVersion_CURRENT);
+    std::istringstream anIn1(anOut1.str());
+    std::string        aMessage1;
+    TopoDS_Shape       aRead1;
+    try
+    {
+      BinTools::Read(aRead1, anIn1);
+    }
+    catch (const Standard_Failure& theFailure)
+    {
+      aMessage1 = theFailure.what();
+    }
+
+    std::ostringstream   anOut2;
+    BinTools_ShapeWriter aWriter;
+    aWriter.Write(aShape, anOut2);
+    const std::string aMessage2 = readShapeFrom(anOut2.str(), 0);
+
+    if (aNbItems == 900)
+    {
+      EXPECT_TRUE(aMessage1.empty()) << aMessage1;
+      EXPECT_TRUE(aMessage2.empty()) << aMessage2;
+      // datums read back are new objects: compare the transformations
+      EXPECT_LT((aRead1.Location().Transformation().TranslationPart()
+                 - aLoc.Transformation().TranslationPart())
+                  .Modulus(),
+                1.0e-9);
+    }
+    else
+    {
+      EXPECT_NE(aMessage1.find("too many items"), std::string::npos) << aMessage1;
+      EXPECT_NE(aMessage2.find("too many items"), std::string::npos) << aMessage2;
+    }
+  }
+}
+
+// Guard: compounds nested deeper than in usual models are written and read back.
+TEST(BinTools_ReadLimitsTest, ShapeReader_IntactNestedCompounds)
+{
+  BRep_Builder aBuilder;
+  int          aNbNodes = 0, aNbTriangles = 0;
+  TopoDS_Shape aChild = meshedFace(aNbNodes, aNbTriangles);
+  const int    aDepth = 150;
+  for (int i = 0; i < aDepth; ++i)
+  {
+    TopoDS_Compound aParent;
+    aBuilder.MakeCompound(aParent);
+    aBuilder.Add(aParent, aChild);
+    aChild = aParent;
+  }
+  std::ostringstream   anOut;
+  BinTools_ShapeWriter aWriter;
+  aWriter.Write(aChild, anOut);
+
+  std::istringstream   anIn(anOut.str());
+  BinTools_ShapeReader aReader;
+  TopoDS_Shape         aRead;
+  aReader.Read(anIn, aRead);
+  int aLevels = 0;
+  for (TopoDS_Shape aShape = aRead; aShape.ShapeType() == TopAbs_COMPOUND; ++aLevels)
+  {
+    TopoDS_Iterator anIt(aShape);
+    ASSERT_TRUE(anIt.More());
+    aShape = anIt.Value();
+  }
+  EXPECT_EQ(aLevels, aDepth);
+}
+
+namespace
+{
+
+//! Encoding of an integer by BinTools_OStream (shapes of binary OCAF documents).
+std::string streamInteger(const int theValue)
+{
+  std::ostringstream aStream;
+  BinTools_OStream   aBinStream(aStream);
+  aBinStream << theValue;
+  return aStream.str();
+}
+
+//! Encoding of an integer by BinTools::PutInteger (BinTools_ShapeSet).
+std::string putInteger(const int theValue)
+{
+  std::ostringstream aStream;
+  BinTools::PutInteger(aStream, theValue);
+  return aStream.str();
+}
+
+//! Message of the failure of reading theData by BinTools_ShapeReader.
+std::string readerFailure(const std::string& theData)
+{
+  std::istringstream   anIn(theData);
+  BinTools_ShapeReader aReader;
+  TopoDS_Shape         aRead;
+  try
+  {
+    aReader.Read(anIn, aRead);
+  }
+  catch (const Standard_Failure& theFailure)
+  {
+    return theFailure.what();
+  }
+  return std::string();
+}
+
+//! Message of the failure of reading theData by BinTools::Read.
+std::string shapeSetFailure(const std::string& theData)
+{
+  std::istringstream anIn(theData);
+  TopoDS_Shape       aRead;
+  try
+  {
+    BinTools::Read(aRead, anIn);
+  }
+  catch (const Standard_Failure& theFailure)
+  {
+    return theFailure.what();
+  }
+  return std::string();
+}
+
+//! Edge on a cubic B-spline curve of THE_NB_POLES poles.
+TopoDS_Edge bsplineEdge()
+{
+  NCollection_Array1<gp_Pnt> aPoles(1, THE_NB_POLES);
+  for (int anIter = 1; anIter <= THE_NB_POLES; ++anIter)
+  {
+    aPoles(anIter) = gp_Pnt(anIter, anIter % 3, 0.0);
+  }
+  NCollection_Array1<double> aKnots;
+  NCollection_Array1<int>    aMults;
+  cubicKnots(THE_NB_POLES, aKnots, aMults);
+  return BRepBuilderAPI_MakeEdge(
+    occ::handle<Geom_Curve>(new Geom_BSplineCurve(aPoles, aKnots, aMults, 3)));
+}
+
+} // namespace
+
+// The number of knots of a B-spline curve, which follows the number of poles, is limited by the
+// stream as well.
+TEST(BinTools_ReadLimitsTest, BSplineCurveKnotsLargerThanStream)
+{
+  std::ostringstream anOut;
+  BinTools::Write(bsplineEdge(), anOut, true, false, BinTools_FormatVersion_CURRENT);
+  std::string aData = anOut.str();
+  ASSERT_TRUE(replaceCounts(aData, THE_NB_KNOTS, 0, THE_HUGE_NB_NODES, putInteger, THE_NB_POLES));
+  const std::string aMessage = shapeSetFailure(aData);
+  EXPECT_NE(aMessage.find("larger than the stream"), std::string::npos) << aMessage;
+}
+
+// The degrees of a Bezier surface, two 16-bit values, alone can ask for (2^16)^2 poles.
+TEST(BinTools_ReadLimitsTest, BezierSurfaceLargerThanStream)
+{
+  NCollection_Array2<gp_Pnt> aPoles(1, 8, 1, 10);
+  for (int aU = 1; aU <= 8; ++aU)
+  {
+    for (int aV = 1; aV <= 10; ++aV)
+    {
+      aPoles(aU, aV) = gp_Pnt(aU, aV, (aU * aV) % 3);
+    }
+  }
+  const TopoDS_Face aFace =
+    BRepBuilderAPI_MakeFace(occ::handle<Geom_Surface>(new Geom_BezierSurface(aPoles)), 1.0e-7);
+  std::ostringstream anOut;
+  BinTools::Write(aFace, anOut, true, false, BinTools_FormatVersion_CURRENT);
+  std::string aData     = anOut.str();
+  auto        anExtChar = [](const int theValue) {
+    std::ostringstream aStream;
+    BinTools::PutExtChar(aStream, static_cast<char16_t>(theValue));
+    return aStream.str();
+  };
+  ASSERT_TRUE(replaceCounts(aData, 7, 9, 60000, anExtChar));
+  const std::string aMessage = shapeSetFailure(aData);
+  EXPECT_NE(aMessage.find("Bezier surface: larger than the stream"), std::string::npos) << aMessage;
+}
+
+// The geometry of a binary OCAF document is read by BinTools_ShapeReader through the same
+// guards: a curve and a surface that declare more poles than the stream holds.
+TEST(BinTools_ReadLimitsTest, ShapeReader_GeometryLargerThanStream)
+{
+  {
+    std::ostringstream   anOut;
+    BinTools_ShapeWriter aWriter;
+    aWriter.Write(bsplineEdge(), anOut);
+    std::string aData = anOut.str();
+    ASSERT_TRUE(replaceCounts(aData, THE_NB_POLES, THE_NB_KNOTS, THE_HUGE_NB_NODES, streamInteger));
+    const std::string aMessage = readerFailure(aData);
+    EXPECT_NE(aMessage.find("larger than the stream"), std::string::npos) << aMessage;
+  }
+  {
+    std::ostringstream   anOut;
+    BinTools_ShapeWriter aWriter;
+    aWriter.Write(bsplineFace(60, 40, false), anOut);
+    std::string aData = anOut.str();
+    ASSERT_TRUE(replaceCounts(aData, 60, 40, 300, streamInteger));
+    ASSERT_TRUE(replaceCounts(aData, 40, 0, 300, streamInteger, 300));
+    const std::string aMessage = readerFailure(aData);
+    EXPECT_NE(aMessage.find("larger than the stream"), std::string::npos) << aMessage;
   }
 }

@@ -40,6 +40,7 @@
 #include <NCollection_Array1.hxx>
 #include <Message_ProgressScope.hxx>
 #include <iomanip>
+#include "BinTools_ReadLimits.pxx"
 
 #define PLANE 1
 #define CYLINDER 2
@@ -706,6 +707,10 @@ static Standard_IStream& operator>>(Standard_IStream& IS, occ::handle<Geom_Offse
 Standard_IStream& BinTools_SurfaceSet::ReadSurface(Standard_IStream&          IS,
                                                    occ::handle<Geom_Surface>& S)
 {
+  // a trimmed or offset geometry reads its basis geometry through this function
+  BinTools_ReadLimits::NestingGuard aNesting;
+
+  std::string aMessage;
   try
   {
     OCC_CATCH_SIGNALS
@@ -799,11 +804,17 @@ Standard_IStream& BinTools_SurfaceSet::ReadSurface(Standard_IStream&          IS
   }
   catch (Standard_Failure const& anException)
   {
-    S = nullptr;
     Standard_SStream aMsg;
     aMsg << "EXCEPTION in BinTools_SurfaceSet::ReadSurface(..)" << '\n';
     aMsg << anException << '\n';
-    throw Standard_Failure(aMsg.str().c_str());
+    aMessage = aMsg.str();
+  }
+  // thrown after the handler: a throw inside it keeps the stack of the failed reading, so nested
+  // trimmed or offset geometries would keep the stacks of all their levels
+  if (!aMessage.empty())
+  {
+    S = nullptr;
+    throw Standard_Failure(aMessage.c_str());
   }
   return IS;
 }

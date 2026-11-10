@@ -22,7 +22,26 @@
 #include <BRep_PointOnCurveOnSurface.hxx>
 #include <BRep_PointOnSurface.hxx>
 #include <Standard_ErrorHandler.hxx>
+#include <Standard_Failure.hxx>
 #include <TopoDS.hxx>
+#include "BinTools_ReadLimits.pxx"
+
+namespace
+{
+//! Reads a reference. OCCT writes a reference to an object written before it; a later target
+//! (a delta that wraps around, or a reference cut by the end of the stream) comes from a damaged
+//! or crafted stream. A reference back to an object still being read still makes a cycle; the
+//! nesting limit (BinTools_ReadLimits) stops it.
+uint64_t readReference(BinTools_IStream& theStream, const uint64_t thePosition)
+{
+  const uint64_t aRef = theStream.ReadReference();
+  if (aRef >= thePosition)
+  {
+    throw Standard_Failure("BinTools_ShapeReader: reference to a later position");
+  }
+  return aRef;
+}
+} // namespace
 
 //=================================================================================================
 
@@ -59,9 +78,10 @@ void BinTools_ShapeReader::Read(Standard_IStream& theStream, TopoDS_Shape& theSh
 
 TopoDS_Shape BinTools_ShapeReader::ReadShape(BinTools_IStream& theStream)
 {
-  TopoDS_Shape               aResult;
-  uint64_t                   aPosition = theStream.Position();
-  const BinTools_ObjectType& aType     = theStream.ReadType();
+  BinTools_ReadLimits::NestingGuard aNesting;
+  TopoDS_Shape                      aResult;
+  uint64_t                          aPosition = theStream.Position();
+  const BinTools_ObjectType&        aType     = theStream.ReadType();
   if (aType == BinTools_ObjectType_EmptyShape || aType == BinTools_ObjectType_EndShape)
   {
     return aResult;
@@ -69,7 +89,7 @@ TopoDS_Shape BinTools_ShapeReader::ReadShape(BinTools_IStream& theStream)
 
   if (theStream.IsReference())
   {
-    uint64_t            aRef   = theStream.ReadReference();
+    uint64_t            aRef   = readReference(theStream, aPosition);
     const TopoDS_Shape* aFound = myShapePos.Seek(aRef);
     if (aFound) // the shape is already retrieved, just add location
     {
@@ -344,7 +364,8 @@ TopoDS_Shape BinTools_ShapeReader::ReadShape(BinTools_IStream& theStream)
 
 const TopLoc_Location* BinTools_ShapeReader::ReadLocation(BinTools_IStream& theStream)
 {
-  static const TopLoc_Location* anEmptyLoc = new TopLoc_Location;
+  BinTools_ReadLimits::NestingGuard aNesting;
+  static const TopLoc_Location*     anEmptyLoc = new TopLoc_Location;
 
   uint64_t                   aPosition = theStream.Position();
   const BinTools_ObjectType& aType     = theStream.ReadType();
@@ -354,7 +375,7 @@ const TopLoc_Location* BinTools_ShapeReader::ReadLocation(BinTools_IStream& theS
   }
   if (theStream.IsReference())
   {
-    uint64_t               aRef   = theStream.ReadReference();
+    uint64_t               aRef   = readReference(theStream, aPosition);
     const TopLoc_Location* aFound = myLocationPos.Seek(aRef);
     if (aFound)
     { // the location is already retrieved
@@ -376,11 +397,14 @@ const TopLoc_Location* BinTools_ShapeReader::ReadLocation(BinTools_IStream& theS
   }
   else if (aType == BinTools_ObjectType_Location)
   {
+    NCollection_Vector<TopLoc_Location> anItems;
     for (const TopLoc_Location* aNextLoc = ReadLocation(theStream); !aNextLoc->IsIdentity();
          aNextLoc                        = ReadLocation(theStream))
     {
-      aLoc = aNextLoc->Powered(theStream.ReadInteger()) * aLoc;
+      BinTools_ReadLimits::CheckLocationItem(*aNextLoc, anItems.Length() + 1);
+      anItems.Append(aNextLoc->Powered(theStream.ReadInteger()));
     }
+    aLoc = BinTools_ReadLimits::ComposeItems(anItems);
   }
   myLocationPos.Bind(aPosition, aLoc);
   return myLocationPos.Seek(aPosition);
@@ -390,12 +414,13 @@ const TopLoc_Location* BinTools_ShapeReader::ReadLocation(BinTools_IStream& theS
 
 occ::handle<Geom_Curve> BinTools_ShapeReader::ReadCurve(BinTools_IStream& theStream)
 {
-  occ::handle<Geom_Curve> aResult;
-  uint64_t                aPosition = theStream.Position();
+  BinTools_ReadLimits::NestingGuard aNesting;
+  occ::handle<Geom_Curve>           aResult;
+  uint64_t                          aPosition = theStream.Position();
   theStream.ReadType();
   if (theStream.IsReference())
   { // get by reference
-    uint64_t                       aRef   = theStream.ReadReference();
+    uint64_t                       aRef   = readReference(theStream, aPosition);
     const occ::handle<Geom_Curve>* aFound = myCurvePos.Seek(aRef);
     if (aFound)
     { // the location is already retrieved
@@ -419,12 +444,13 @@ occ::handle<Geom_Curve> BinTools_ShapeReader::ReadCurve(BinTools_IStream& theStr
 
 occ::handle<Geom2d_Curve> BinTools_ShapeReader::ReadCurve2d(BinTools_IStream& theStream)
 {
-  occ::handle<Geom2d_Curve> aResult;
-  uint64_t                  aPosition = theStream.Position();
+  BinTools_ReadLimits::NestingGuard aNesting;
+  occ::handle<Geom2d_Curve>         aResult;
+  uint64_t                          aPosition = theStream.Position();
   theStream.ReadType();
   if (theStream.IsReference())
   { // get by reference
-    uint64_t                         aRef   = theStream.ReadReference();
+    uint64_t                         aRef   = readReference(theStream, aPosition);
     const occ::handle<Geom2d_Curve>* aFound = myCurve2dPos.Seek(aRef);
     if (aFound)
     { // the location is already retrieved
@@ -448,12 +474,13 @@ occ::handle<Geom2d_Curve> BinTools_ShapeReader::ReadCurve2d(BinTools_IStream& th
 
 occ::handle<Geom_Surface> BinTools_ShapeReader::ReadSurface(BinTools_IStream& theStream)
 {
-  occ::handle<Geom_Surface> aResult;
-  uint64_t                  aPosition = theStream.Position();
+  BinTools_ReadLimits::NestingGuard aNesting;
+  occ::handle<Geom_Surface>         aResult;
+  uint64_t                          aPosition = theStream.Position();
   theStream.ReadType();
   if (theStream.IsReference())
   { // get by reference
-    uint64_t                         aRef   = theStream.ReadReference();
+    uint64_t                         aRef   = readReference(theStream, aPosition);
     const occ::handle<Geom_Surface>* aFound = mySurfacePos.Seek(aRef);
     if (aFound)
     { // the location is already retrieved
@@ -477,12 +504,13 @@ occ::handle<Geom_Surface> BinTools_ShapeReader::ReadSurface(BinTools_IStream& th
 
 occ::handle<Poly_Polygon3D> BinTools_ShapeReader::ReadPolygon3d(BinTools_IStream& theStream)
 {
-  occ::handle<Poly_Polygon3D> aResult;
-  uint64_t                    aPosition = theStream.Position();
+  BinTools_ReadLimits::NestingGuard aNesting;
+  occ::handle<Poly_Polygon3D>       aResult;
+  uint64_t                          aPosition = theStream.Position();
   theStream.ReadType();
   if (theStream.IsReference())
   { // get by reference
-    uint64_t                           aRef   = theStream.ReadReference();
+    uint64_t                           aRef   = readReference(theStream, aPosition);
     const occ::handle<Poly_Polygon3D>* aFound = myPolygon3dPos.Seek(aRef);
     if (aFound)
     { // the location is already retrieved
@@ -528,12 +556,13 @@ occ::handle<Poly_Polygon3D> BinTools_ShapeReader::ReadPolygon3d(BinTools_IStream
 occ::handle<Poly_PolygonOnTriangulation> BinTools_ShapeReader::ReadPolygon(
   BinTools_IStream& theStream)
 {
+  BinTools_ReadLimits::NestingGuard        aNesting;
   occ::handle<Poly_PolygonOnTriangulation> aResult;
   uint64_t                                 aPosition = theStream.Position();
   theStream.ReadType();
   if (theStream.IsReference())
   { // get by reference
-    uint64_t                                        aRef   = theStream.ReadReference();
+    uint64_t                                        aRef   = readReference(theStream, aPosition);
     const occ::handle<Poly_PolygonOnTriangulation>* aFound = myPolygonPos.Seek(aRef);
     if (aFound)
     { // the location is already retrieved
@@ -576,12 +605,13 @@ occ::handle<Poly_PolygonOnTriangulation> BinTools_ShapeReader::ReadPolygon(
 
 occ::handle<Poly_Triangulation> BinTools_ShapeReader::ReadTriangulation(BinTools_IStream& theStream)
 {
-  occ::handle<Poly_Triangulation> aResult;
-  uint64_t                        aPosition = theStream.Position();
-  const BinTools_ObjectType&      aType     = theStream.ReadType();
+  BinTools_ReadLimits::NestingGuard aNesting;
+  occ::handle<Poly_Triangulation>   aResult;
+  uint64_t                          aPosition = theStream.Position();
+  const BinTools_ObjectType&        aType     = theStream.ReadType();
   if (theStream.IsReference())
   { // get by reference
-    uint64_t                               aRef   = theStream.ReadReference();
+    uint64_t                               aRef   = readReference(theStream, aPosition);
     const occ::handle<Poly_Triangulation>* aFound = myTriangulationPos.Seek(aRef);
     if (aFound)
     { // the location is already retrieved

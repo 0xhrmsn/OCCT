@@ -24,6 +24,7 @@ set(OCCT_BinTools_FILES
   BinTools_OStream.cxx
   BinTools_OStream.hxx
   BinTools_ShapeReader.hxx
+  BinTools_ReadLimits.pxx
   BinTools_ShapeReader.cxx
   BinTools_ShapeWriter.hxx
   BinTools_ShapeWriter.cxx

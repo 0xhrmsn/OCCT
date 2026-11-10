@@ -22,6 +22,29 @@
 #include <fstream>
 #include <Message_ProgressScope.hxx>
 #include <TopTools_LocationSet.hxx>
+#include <Standard_Failure.hxx>
+#include <NCollection_Vector.hxx>
+
+namespace
+{
+//! OCCT writes a composed location as powers of elementary locations. A composed location used as
+//! an item, or a very long chain of items, makes TopLoc_Location::Powered, Multiplied and the
+//! destruction of the chain recurse as deep as a damaged or crafted file asks.
+constexpr int THE_MAX_LOCATION_ITEMS = 1000;
+
+//! Checks the theNbItems-th item theItem of a composed location.
+void checkLocationItem(const TopLoc_Location& theItem, const int theNbItems)
+{
+  if (!theItem.NextLocation().IsIdentity() || theItem.FirstPower() != 1)
+  {
+    throw Standard_Failure("TopTools_LocationSet: a location item is not elementary");
+  }
+  if (theNbItems > THE_MAX_LOCATION_ITEMS)
+  {
+    throw Standard_Failure("TopTools_LocationSet: too many items in a location");
+  }
+}
+} // namespace
 
 //=================================================================================================
 
@@ -291,14 +314,22 @@ void TopTools_LocationSet::Read(Standard_IStream& IS, const Message_ProgressRang
 
     else if (typLoc == 2)
     {
-      L = TopLoc_Location();
+      // the items are composed once read: the item read first is applied last; multiplying by one
+      // item at a time on the right does not recurse along the whole location
+      NCollection_Vector<TopLoc_Location> anItems;
       IS >> l1;
       while (l1 != 0)
       {
         IS >> p;
         TopLoc_Location L1 = myMap(l1);
-        L                  = L1.Powered(p) * L;
+        checkLocationItem(L1, anItems.Length() + 1);
+        anItems.Append(L1.Powered(p));
         IS >> l1;
+      }
+      L = TopLoc_Location();
+      for (int anIndex = anItems.Upper(); anIndex >= anItems.Lower(); --anIndex)
+      {
+        L = L * anItems.Value(anIndex);
       }
     }
 

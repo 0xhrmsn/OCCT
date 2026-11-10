@@ -19,6 +19,7 @@
 #include <Standard_ErrorHandler.hxx>
 #include <TopLoc_Location.hxx>
 #include <iomanip>
+#include "BinTools_ReadLimits.pxx"
 
 //=================================================================================================
 // function : operator >> (gp_Trsf& T)
@@ -232,15 +233,17 @@ void BinTools_LocationSet::Read(Standard_IStream& IS)
 
       else if (aTypLoc == 2)
       {
-        L = TopLoc_Location();
+        NCollection_Vector<TopLoc_Location> anItems;
         BinTools::GetInteger(IS, l1); // Index
         while (l1 != 0)
         {
           BinTools::GetInteger(IS, p);
           TopLoc_Location L1 = myMap(l1);
-          L                  = L1.Powered(p) * L;
+          BinTools_ReadLimits::CheckLocationItem(L1, anItems.Length() + 1);
+          anItems.Append(L1.Powered(p));
           BinTools::GetInteger(IS, l1);
         }
+        L = BinTools_ReadLimits::ComposeItems(anItems);
       }
       else
       {

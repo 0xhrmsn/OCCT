@@ -43,6 +43,33 @@
 #include <NCollection_Array1.hxx>
 #include <Standard_Integer.hxx>
 
+namespace
+{
+//! Trimmed and offset geometries are read with their basis geometry. OCCT writes a few levels;
+//! a damaged or crafted file can nest them until the stack overflows.
+constexpr int    THE_MAX_NESTING = 100;
+thread_local int THE_NESTING     = 0;
+
+//! Counts the geometries being read by this thread and stops a too deep nesting.
+class NestingGuard
+{
+public:
+  NestingGuard()
+  {
+    if (THE_NESTING >= THE_MAX_NESTING)
+    {
+      throw Standard_Failure("GeomTools_CurveSet::ReadCurve: geometry nested too deeply");
+    }
+    ++THE_NESTING;
+  }
+
+  ~NestingGuard() { --THE_NESTING; }
+
+  NestingGuard(const NestingGuard&)            = delete;
+  NestingGuard& operator=(const NestingGuard&) = delete;
+};
+} // namespace
+
 #define LINE 1
 #define CIRCLE 2
 #define ELLIPSE 3
@@ -882,6 +909,10 @@ static Standard_IStream& operator>>(Standard_IStream& IS, occ::handle<Geom_Trimm
   {
     return IS;
   }
+  if (BC.IsNull())
+  {
+    throw Standard_Failure("GeomTools_CurveSet::ReadCurve: the basis geometry is not read");
+  }
   C = new Geom_TrimmedCurve(BC, p1, p2, true, false);
   return IS;
 }
@@ -903,6 +934,10 @@ static Standard_IStream& operator>>(Standard_IStream& IS, occ::handle<Geom_Offse
   {
     return IS;
   }
+  if (BC.IsNull())
+  {
+    throw Standard_Failure("GeomTools_CurveSet::ReadCurve: the basis geometry is not read");
+  }
   C = new Geom_OffsetCurve(BC, p, D);
   return IS;
 }
@@ -911,6 +946,9 @@ static Standard_IStream& operator>>(Standard_IStream& IS, occ::handle<Geom_Offse
 
 occ::handle<Geom_Curve> GeomTools_CurveSet::ReadCurve(Standard_IStream& IS)
 {
+  // a trimmed or offset geometry reads its basis geometry through this function
+  NestingGuard aNesting;
+
   int ctype;
 
   occ::handle<Geom_Curve> C;
@@ -1034,6 +1072,12 @@ void GeomTools_CurveSet::Read(Standard_IStream& IS, const Message_ProgressRange&
     if (IS.fail())
     {
       return;
+    }
+    // the writer never writes a null entry: a null one is damaged or of an unknown type, and a
+    // second null would be merged with the first one, shifting the indices of all the following
+    if (C.IsNull())
+    {
+      throw Standard_Failure("GeomTools_CurveSet::Read: a curve is not read");
     }
     myMap.Add(C);
   }
