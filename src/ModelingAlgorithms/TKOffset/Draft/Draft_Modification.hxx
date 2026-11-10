@@ -210,7 +210,9 @@ private:
   TopoDS_Shape                                                                         badShape;
   Draft_ErrorStatus                                                                    errStat;
   TopoDS_Face                                                                          curFace;
-  NCollection_List<TopoDS_Shape>                                                       conneF;
+  //! Face of the last Add(): the root of the faces and edges it recorded, kept for Remove()
+  TopoDS_Face                    myLastAddedFace;
+  NCollection_List<TopoDS_Shape> conneF;
   NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher>
     myEFMap;
 };

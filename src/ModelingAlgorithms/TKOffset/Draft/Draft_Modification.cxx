@@ -71,6 +71,7 @@ void Draft_Modification::Clear()
   myEFMap.Clear();
   badShape.Nullify();
   errStat = Draft_NoError;
+  myLastAddedFace.Nullify();
 }
 
 //=================================================================================================
@@ -99,7 +100,8 @@ bool Draft_Modification::Add(const TopoDS_Face& F,
   {
     Clear();
   }
-  curFace = F;
+  curFace         = F;
+  myLastAddedFace = F;
   return InternalAdd(F, Direction, Angle, NeutralPlane, Flag);
 }
 
@@ -107,15 +109,28 @@ bool Draft_Modification::Add(const TopoDS_Face& F,
 
 void Draft_Modification::Remove(const TopoDS_Face& F)
 {
-  if (!myFMap.Contains(F) || myComp)
+  // Remove() is the way out of a failed Add(): the face of the last Add() is the root of all the
+  // faces and edges recorded by it. The failed face could be not recorded at all, and a failed
+  // edge was never cleared, so that every later Add() failed.
+  const bool isFailedAdd =
+    !badShape.IsNull() && !myComp && !myLastAddedFace.IsNull()
+    && (F.IsSame(myLastAddedFace)
+        || (myFMap.Contains(F) && myFMap.FindFromKey(F).RootFace().IsSame(myLastAddedFace)));
+  if (myComp || (!myFMap.Contains(F) && !isFailedAdd))
   {
     throw Standard_NoSuchObject();
+  }
+  if (isFailedAdd)
+  {
+    badShape.Nullify();
+    errStat = Draft_NoError;
   }
 
   conneF.Clear();
   NCollection_List<TopoDS_Shape>::Iterator ltod;
 
-  curFace = myFMap.FindFromKey(F).RootFace();
+  // root of the faces and edges to remove; a failed face not recorded is the root itself
+  curFace = myFMap.Contains(F) ? myFMap.FindFromKey(F).RootFace() : myLastAddedFace;
   for (int i = 1; i <= myFMap.Extent(); i++)
   {
     const TopoDS_Face& theF = myFMap.FindKey(i);
@@ -143,6 +158,10 @@ void Draft_Modification::Remove(const TopoDS_Face& F)
     if (myEMap.FindFromKey(theE).RootFace().IsSame(curFace))
     {
       conneF.Append(theE);
+      if (theE.IsSame(badShape))
+      {
+        badShape.Nullify();
+      }
     }
   }
   ltod.Initialize(conneF);
