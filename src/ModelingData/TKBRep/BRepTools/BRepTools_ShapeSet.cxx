@@ -33,6 +33,7 @@
 #include <BRepTools.hxx>
 #include <BRepTools_ShapeSet.hxx>
 #include <GeomTools.hxx>
+#include <Standard_Failure.hxx>
 #include <Message_ProgressScope.hxx>
 #include <Poly_Polygon3D.hxx>
 #include <Poly_PolygonOnTriangulation.hxx>
@@ -1416,6 +1417,12 @@ void BRepTools_ShapeSet::ReadPolygonOnTriangulation(Standard_IStream&           
   for (i = 1; i <= nbpol && aPS.More(); i++, aPS.Next())
   {
     IS >> nbnodes;
+    // the count comes from the stream: each node index takes at least 2 characters
+    if (!GeomTools::IsAvailable(IS, nbnodes, 2))
+    {
+      throw Standard_Failure(
+        "BRepTools_ShapeSet: polygon on triangulation: larger than the stream");
+    }
     NCollection_Array1<int> Nodes(1, nbnodes);
     for (j = 1; j <= nbnodes; j++)
     {
@@ -1590,6 +1597,11 @@ void BRepTools_ShapeSet::ReadPolygon3D(Standard_IStream&            IS,
   {
     IS >> nbnodes;
     IS >> hasparameters;
+    // the count comes from the stream: each node takes at least 3 numbers
+    if (!GeomTools::IsAvailable(IS, nbnodes, 6))
+    {
+      throw Standard_Failure("BRepTools_ShapeSet: 3D polygon: larger than the stream");
+    }
     NCollection_Array1<gp_Pnt> Nodes(1, nbnodes);
     GeomTools::GetReal(IS, d);
     if (IS.fail())
@@ -1868,6 +1880,11 @@ void BRepTools_ShapeSet::ReadTriangulation(Standard_IStream&            IS,
     if (IS.fail())
     {
       return;
+    }
+    // the counts come from the stream: each node takes at least 3 numbers, each triangle 3
+    if (!GeomTools::IsAvailable(IS, nbNodes, 6) || !GeomTools::IsAvailable(IS, nbTriangles, 6))
+    {
+      throw Standard_Failure("BRepTools_ShapeSet: triangulation: larger than the stream");
     }
 
     T = new Poly_Triangulation(nbNodes, nbTriangles, hasUV, hasNormals);

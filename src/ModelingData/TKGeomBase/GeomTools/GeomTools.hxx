@@ -79,6 +79,14 @@ public:
   //! @param[out] theValue converted value
   //! Sets the stream failbit and leaves the value zero if the number is too long.
   Standard_EXPORT static void GetReal(Standard_IStream& IS, double& theValue);
+
+  //! Returns false when the rest of the text stream cannot hold theNbItems items of at least
+  //! theMinItemSize characters each (a number takes at least 2: a digit and a separator), or
+  //! theNbItems is negative. Called before allocating arrays sized by counts read from a damaged
+  //! or crafted stream; the stream is not moved. A stream of unknown size is accepted.
+  Standard_EXPORT static bool IsAvailable(Standard_IStream& IS,
+                                          const int         theNbItems,
+                                          const size_t      theMinItemSize);
 };
 
 #endif // _GeomTools_HeaderFile

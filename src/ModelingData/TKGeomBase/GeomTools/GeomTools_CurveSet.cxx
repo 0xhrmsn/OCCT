@@ -815,6 +815,11 @@ static Standard_IStream& operator>>(Standard_IStream& IS, occ::handle<Geom_Bezie
   // poles and weights
   int i = 0, degree = 0;
   IS >> degree;
+  // the degree comes from the stream: it sizes the arrays
+  if (degree < 0 || degree > Geom_BezierCurve::MaxDegree())
+  {
+    throw Standard_Failure("GeomTools_CurveSet: Bezier curve: wrong degree");
+  }
 
   NCollection_Array1<gp_Pnt> poles(1, degree + 1);
   NCollection_Array1<double> weights(1, degree + 1);
@@ -855,6 +860,11 @@ static Standard_IStream& operator>>(Standard_IStream& IS, occ::handle<Geom_BSpli
   // poles and weights
   int i = 0, degree = 0, nbpoles = 0, nbknots = 0;
   IS >> degree >> nbpoles >> nbknots;
+  // the counts come from the stream: each pole takes at least 3 numbers, each knot 2
+  if (!GeomTools::IsAvailable(IS, nbpoles, 6) || !GeomTools::IsAvailable(IS, nbknots, 4))
+  {
+    throw Standard_Failure("GeomTools_CurveSet: B-spline curve: larger than the stream");
+  }
 
   NCollection_Array1<gp_Pnt> poles(1, nbpoles);
   NCollection_Array1<double> weights(1, nbpoles);

@@ -1035,6 +1035,12 @@ static Standard_IStream& operator>>(Standard_IStream& IS, occ::handle<Geom_Bezie
   IS >> urational >> vrational;
   int udegree = 0, vdegree = 0;
   IS >> udegree >> vdegree;
+  // the degrees come from the stream: they size the arrays
+  if (udegree < 0 || udegree > Geom_BezierSurface::MaxDegree() || vdegree < 0
+      || vdegree > Geom_BezierSurface::MaxDegree())
+  {
+    throw Standard_Failure("GeomTools_SurfaceSet: Bezier surface: wrong degree");
+  }
   NCollection_Array2<gp_Pnt> poles(1, udegree + 1, 1, vdegree + 1);
   NCollection_Array2<double> weights(1, udegree + 1, 1, vdegree + 1);
 
@@ -1077,6 +1083,12 @@ static Standard_IStream& operator>>(Standard_IStream& IS, occ::handle<Geom_BSpli
   IS >> udegree >> vdegree;
   IS >> nbupoles >> nbvpoles;
   IS >> nbuknots >> nbvknots;
+  // the counts come from the stream: each pole takes at least 3 numbers, each knot 2
+  if (nbvpoles < 0 || !GeomTools::IsAvailable(IS, nbupoles, static_cast<size_t>(nbvpoles) * 6)
+      || !GeomTools::IsAvailable(IS, nbuknots, 4) || !GeomTools::IsAvailable(IS, nbvknots, 4))
+  {
+    throw Standard_Failure("GeomTools_SurfaceSet: B-spline surface: larger than the stream");
+  }
 
   NCollection_Array2<gp_Pnt> poles(1, nbupoles, 1, nbvpoles);
   NCollection_Array2<double> weights(1, nbupoles, 1, nbvpoles);

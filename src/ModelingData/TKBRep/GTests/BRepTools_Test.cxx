@@ -36,6 +36,11 @@
 #include <TopoDS.hxx>
 #include <TopExp_Explorer.hxx>
 #include <BRep_Tool.hxx>
+#include <BRepBuilderAPI_MakeEdge.hxx>
+#include <BRepBuilderAPI_MakeFace.hxx>
+#include <Geom_BSplineCurve.hxx>
+#include <Geom_CylindricalSurface.hxx>
+#include <gp_Ax3.hxx>
 
 #include <gtest/gtest.h>
 
@@ -485,5 +490,91 @@ TEST(BRepTools_Test, Read_ComposedLocation_Text)
       isFailed = true;
     }
     EXPECT_TRUE(isFailed) << aTable.substr(0, 40);
+  }
+}
+
+namespace
+{
+//! Reads theData as a text BREP; returns the message of the failure, empty when read.
+std::string textReadFailure(const std::string& theData)
+{
+  std::istringstream anIn(theData);
+  TopoDS_Shape       aRead;
+  try
+  {
+    BRepTools::Read(aRead, anIn, BRep_Builder());
+  }
+  catch (const Standard_Failure& theFailure)
+  {
+    return theFailure.what();
+  }
+  return std::string();
+}
+
+//! Replaces the only occurrence of theOld in theData by theNew.
+bool replaceOnce(std::string& theData, const std::string& theOld, const std::string& theNew)
+{
+  const size_t aPos = theData.find(theOld);
+  if (aPos == std::string::npos || theData.find(theOld, aPos + 1) != std::string::npos)
+  {
+    return false;
+  }
+  theData.replace(aPos, theOld.size(), theNew);
+  return true;
+}
+} // namespace
+
+// The counts of a text BREP sized the arrays without a limit: a few bytes asked for gigabytes.
+// They are now limited by the rest of the stream, as in binary BREP.
+TEST(BRepTools_Test, Read_CountsLargerThanStream_Text)
+{
+  // triangulation
+  {
+    occ::handle<Geom_CylindricalSurface> aCylinder =
+      new Geom_CylindricalSurface(gp_Ax3(gp::XOY()), 20.0);
+    const TopoDS_Face aFace = BRepBuilderAPI_MakeFace(aCylinder, 0.0, 6.0, 0.0, 30.0, 1.0e-7);
+    BRepMesh_IncrementalMesh               aMesher(aFace, 0.01);
+    TopLoc_Location                        aLoc;
+    const occ::handle<Poly_Triangulation>& aTri = BRep_Tool::Triangulation(aFace, aLoc);
+    std::ostringstream                     anOut;
+    BRepTools::Write(aFace, anOut);
+    std::string       aData = anOut.str();
+    const std::string aCounts =
+      "\n" + std::to_string(aTri->NbNodes()) + " " + std::to_string(aTri->NbTriangles()) + " ";
+    ASSERT_TRUE(
+      replaceOnce(aData, aCounts, "\n20000000 " + std::to_string(aTri->NbTriangles()) + " "));
+    const std::string aMessage = textReadFailure(aData);
+    EXPECT_NE(aMessage.find("larger than the stream"), std::string::npos) << aMessage;
+  }
+  // B-spline curve: type 7, not rational, not periodic, degree 3, 13 poles, 11 knots
+  {
+    NCollection_Array1<gp_Pnt> aPoles(1, 13);
+    for (int anIter = 1; anIter <= 13; ++anIter)
+    {
+      aPoles(anIter) = gp_Pnt(anIter, anIter % 3, 0.0);
+    }
+    NCollection_Array1<double> aKnots(1, 11);
+    NCollection_Array1<int>    aMults(1, 11);
+    for (int anIter = 1; anIter <= 11; ++anIter)
+    {
+      aKnots(anIter) = anIter;
+      aMults(anIter) = (anIter == 1 || anIter == 11) ? 4 : 1;
+    }
+    const TopoDS_Edge anEdge = BRepBuilderAPI_MakeEdge(
+      occ::handle<Geom_Curve>(new Geom_BSplineCurve(aPoles, aKnots, aMults, 3)));
+    std::ostringstream anOut;
+    BRepTools::Write(anEdge, anOut);
+    std::string aData = anOut.str();
+    ASSERT_TRUE(replaceOnce(aData, "\n7 0 0  3 13 11", "\n7 0 0  3 20000000 11"));
+    const std::string aMessage = textReadFailure(aData);
+    EXPECT_FALSE(aMessage.empty());
+  }
+  // guard: the intact text is read
+  {
+    const TopoDS_Shape aBox = BRepPrimAPI_MakeBox(10.0, 20.0, 30.0).Shape();
+    BRepMesh_IncrementalMesh(aBox, 0.5);
+    std::ostringstream anOut;
+    BRepTools::Write(aBox, anOut);
+    EXPECT_TRUE(textReadFailure(anOut.str()).empty());
   }
 }
