@@ -226,11 +226,12 @@ bool BinTools::Write(const TopoDS_Shape&          theShape,
   const occ::handle<OSD_FileSystem>& aFileSystem = OSD_FileSystem::DefaultFileSystem();
   std::shared_ptr<std::ostream>      aStream =
     aFileSystem->OpenOStream(theFile, std::ios::out | std::ios::binary);
-  aStream->precision(15);
+  // the stream is null when the file cannot be created: it was used before this check
   if (aStream.get() == nullptr || !aStream->good())
   {
     return false;
   }
+  aStream->precision(15);
 
   Write(theShape, *aStream, theWithTriangles, theWithNormals, theVersion, theRange);
   aStream->flush();

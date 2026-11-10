@@ -121,3 +121,13 @@ TEST(BRepTools_UserBreakTest, CancelledStreamRead)
     EXPECT_EQ(aRead.IsNull(), aCancel->HasCancelled()) << aNbChecks;
   }
 }
+
+// A binary BREP written to a file that cannot be created used the null stream before checking it.
+TEST(BRepTools_UserBreakTest, WriteToMissingFolder)
+{
+  const TopoDS_Shape aBox    = BRepPrimAPI_MakeBox(10.0, 20.0, 30.0).Shape();
+  const std::string  aFolder = tempFile("occt_missing_folder_for_brep");
+  ASSERT_FALSE(std::filesystem::exists(aFolder));
+  EXPECT_FALSE(BinTools::Write(aBox, (aFolder + "/box.bbrep").c_str()));
+  EXPECT_FALSE(BRepTools::Write(aBox, (aFolder + "/box.brep").c_str()));
+}
