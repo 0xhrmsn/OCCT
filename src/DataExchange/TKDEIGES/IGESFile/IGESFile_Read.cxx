@@ -181,11 +181,14 @@ int IGESFile_Read(char*                                       nomfic,
   //  Now, the check
   // Nb warning in global section.
   int nbWarn = checkread()->NbWarnings(), nbFail = checkread()->NbFails();
-  const occ::handle<Interface_Check>& oldglob = amodel->GlobalCheck();
   if (nbWarn + nbFail > 0)
   {
-    checkread()->GetMessages(oldglob);
-    amodel->SetGlobalCheck(checkread());
+    // The model gets its own check: checkread() is cleared by the next reading, and a model
+    // clears its global check when it is destroyed.
+    occ::handle<Interface_Check> aGlobal = new Interface_Check;
+    aGlobal->GetMessages(checkread());
+    aGlobal->GetMessages(amodel->GlobalCheck());
+    amodel->SetGlobalCheck(aGlobal);
   }
 
   checkread()->Trace(0, 1);

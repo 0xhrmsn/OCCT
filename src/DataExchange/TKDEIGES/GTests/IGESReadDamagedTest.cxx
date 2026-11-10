@@ -16,7 +16,9 @@
 #include <IGESControl_Controller.hxx>
 #include <IGESControl_Reader.hxx>
 #include <IGESControl_Writer.hxx>
+#include <Interface_Check.hxx>
 #include <Interface_CheckIterator.hxx>
+#include <Interface_InterfaceModel.hxx>
 #include <TopExp_Explorer.hxx>
 #include <TopoDS.hxx>
 #include <XSControl_TransferReader.hxx>
@@ -30,6 +32,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <random>
 #include <sstream>
 #include <string>
@@ -37,10 +40,8 @@
 
 namespace
 {
-//! Reads an IGES file and transfers its roots; returns the number of fails of the reading of the
-//! entities and of the transfer. The global check of the reading is not counted: its messages
-//! (e.g. syntax errors of the sections) are only given by the first reading of a process (known
-//! defect of IGESFile_Read, the same in the original code).
+//! Reads an IGES file and transfers its roots; returns the number of fails of all the checks of the
+//! model (global check included) and of the transfer.
 int readAndTransfer(const std::string& thePath)
 {
   IGESControl_Reader aReader;
@@ -52,7 +53,7 @@ int readAndTransfer(const std::string& thePath)
   {
     for (aChecks.Start(); aChecks.More(); aChecks.Next())
     {
-      aNbFails += aChecks.Number() > 0 ? aChecks.Value()->NbFails() : 0;
+      aNbFails += aChecks.Value()->NbFails();
     }
   }
   return aNbFails;
@@ -409,4 +410,46 @@ TEST(IGESReadDamagedTest, NestedGroups_LimitedDepth)
       EXPECT_GT(aNbFails, 0);
     }
   }
+}
+
+// A file with lines removed from its directory section: the syntax errors are in the global check
+// of the model. The models of all the readings shared one check object: the next reading cleared
+// it, and so did the destruction of any model, so the errors of a file disappeared from its model.
+TEST(IGESReadDamagedTest, GlobalCheckKeptPerModel)
+{
+  IGESControl_Controller::Init();
+  std::vector<std::string> aLines    = brepModeLines(BRepPrimAPI_MakeBox(40.0, 30.0, 20.0).Shape());
+  size_t                   aFirstDir = 0;
+  while (aFirstDir < aLines.size()
+         && (aLines[aFirstDir].size() < 73 || aLines[aFirstDir][72] != 'D'))
+  {
+    ++aFirstDir;
+  }
+  ASSERT_LT(aFirstDir + 20, aLines.size());
+  aLines.erase(aLines.begin() + aFirstDir + 10, aLines.begin() + aFirstDir + 20);
+  const std::filesystem::path aPath = uniqueTempPath("IGESReadDamagedTest_GlobalCheck");
+  {
+    std::ofstream aFile(aPath);
+    for (const std::string& aLine : aLines)
+    {
+      aFile << aLine << "\n";
+    }
+  }
+
+  IGESControl_Reader aFirst;
+  const bool         isFirstRead = aFirst.ReadFile(aPath.string().c_str()) == IFSelect_RetDone;
+  std::unique_ptr<IGESControl_Reader> aSecond = std::make_unique<IGESControl_Reader>();
+  const bool      isSecondRead = aSecond->ReadFile(aPath.string().c_str()) == IFSelect_RetDone;
+  std::error_code anError;
+  std::filesystem::remove(aPath, anError);
+  ASSERT_TRUE(isFirstRead);
+  ASSERT_TRUE(isSecondRead);
+  const int aNbFails = aFirst.WS()->Model()->GlobalCheck()->NbFails();
+  EXPECT_GT(aNbFails, 0);
+  EXPECT_EQ(aSecond->WS()->Model()->GlobalCheck()->NbFails(), aNbFails) << "second reading";
+  EXPECT_EQ(aFirst.WS()->Model()->GlobalCheck()->NbFails(), aNbFails)
+    << "first model after the second reading";
+  aSecond.reset();
+  EXPECT_EQ(aFirst.WS()->Model()->GlobalCheck()->NbFails(), aNbFails)
+    << "first model after the destruction of the second one";
 }
