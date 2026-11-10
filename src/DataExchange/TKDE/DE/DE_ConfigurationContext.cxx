@@ -180,6 +180,7 @@ bool DE_ConfigurationContext::Load(const TCollection_AsciiString& theConfigurati
 bool DE_ConfigurationContext::LoadFile(const TCollection_AsciiString& theFile)
 {
   myResource.Clear();
+  myUsedParams.Clear();
   OSD_Path                aPath(theFile);
   OSD_File                aFile    = aPath;
   TCollection_AsciiString FileName = aPath.Name();
@@ -187,7 +188,7 @@ bool DE_ConfigurationContext::LoadFile(const TCollection_AsciiString& theFile)
   if (aFile.Failed())
   {
     Message::SendFail("Error: DE Context loading is stopped. Can't open the file");
-    return true;
+    return false;
   }
   TCollection_AsciiString aLine;
   while (GetLine(aFile, aLine))
@@ -206,6 +207,7 @@ bool DE_ConfigurationContext::LoadFile(const TCollection_AsciiString& theFile)
 bool DE_ConfigurationContext::LoadStr(const TCollection_AsciiString& theResource)
 {
   myResource.Clear();
+  myUsedParams.Clear();
   TCollection_AsciiString aLine   = "";
   const int               aLength = theResource.Length();
   for (int anInd = 1; anInd <= aLength; anInd++)
@@ -294,6 +296,8 @@ bool DE_ConfigurationContext::GetReal(const TCollection_AsciiString& theParam,
     theValue = aStr.RealValue();
     return true;
   }
+  Message::SendWarning() << "Warning: DE configuration parameter " << MakeName(theScope, theParam)
+                         << " is not a real value: " << aStr;
   return false;
 }
 
@@ -313,6 +317,8 @@ bool DE_ConfigurationContext::GetInteger(const TCollection_AsciiString& theParam
     theValue = aStr.IntegerValue();
     return true;
   }
+  Message::SendWarning() << "Warning: DE configuration parameter " << MakeName(theScope, theParam)
+                         << " is not an integer value: " << aStr;
   return false;
 }
 
@@ -332,6 +338,8 @@ bool DE_ConfigurationContext::GetBoolean(const TCollection_AsciiString& theParam
     theValue = aStr.IntegerValue() != 0;
     return true;
   }
+  Message::SendWarning() << "Warning: DE configuration parameter " << MakeName(theScope, theParam)
+                         << " is not a boolean value: " << aStr;
   return false;
 }
 
@@ -342,7 +350,30 @@ bool DE_ConfigurationContext::GetString(const TCollection_AsciiString& theParam,
                                         const TCollection_AsciiString& theScope) const
 {
   TCollection_AsciiString aResource = MakeName(theScope, theParam);
-  return myResource.Find(aResource, theStr);
+  if (!myResource.Find(aResource, theStr))
+  {
+    return false;
+  }
+  myUsedParams.Add(aResource);
+  return true;
+}
+
+//=================================================================================================
+
+NCollection_List<TCollection_AsciiString> DE_ConfigurationContext::UnusedParams() const
+{
+  NCollection_List<TCollection_AsciiString> aParams;
+  for (NCollection_DataMap<TCollection_AsciiString, TCollection_AsciiString>::Iterator anIter(
+         myResource);
+       anIter.More();
+       anIter.Next())
+  {
+    if (!myUsedParams.Contains(anIter.Key()))
+    {
+      aParams.Append(anIter.Key());
+    }
+  }
+  return aParams;
 }
 
 //=================================================================================================
@@ -394,6 +425,8 @@ bool DE_ConfigurationContext::load(const TCollection_AsciiString& theResourceLin
       myResource.Bind(aToken1, aToken2);
       break;
     case DE_ConfigurationContext_KindOfLine_Error:
+      Message::SendWarning() << "Warning: DE configuration line without parameter is ignored: "
+                             << theResourceLine;
       break;
   }
   return true;

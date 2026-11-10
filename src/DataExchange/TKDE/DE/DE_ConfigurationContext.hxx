@@ -17,6 +17,7 @@
 #include <NCollection_DataMap.hxx>
 #include <TCollection_AsciiString.hxx>
 #include <NCollection_List.hxx>
+#include <NCollection_Map.hxx>
 
 //! Provides convenient interface to resource file
 //! Allows loading of the resource file and getting attributes'
@@ -147,6 +148,10 @@ public:
     return myResource;
   }
 
+  //! Returns the loaded parameters that have never been read (GetString() and the functions
+  //! based on it), e.g. the parameters unknown to the configuration nodes.
+  Standard_EXPORT NCollection_List<TCollection_AsciiString> UnusedParams() const;
+
 protected:
   //! Update the resource with param value from the line
   //! @paramp[in] theResourceLine line contains the parameter
@@ -155,7 +160,8 @@ protected:
 
 private:
   NCollection_DataMap<TCollection_AsciiString, TCollection_AsciiString>
-    myResource; //!< Internal parameters map
+                                                   myResource;   //!< Internal parameters map
+  mutable NCollection_Map<TCollection_AsciiString> myUsedParams; //!< Parameters already read
 };
 
 #endif // _DE_ConfigurationContext_HeaderFile

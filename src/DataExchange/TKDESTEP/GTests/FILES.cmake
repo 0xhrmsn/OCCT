@@ -4,6 +4,7 @@ set(OCCT_TKDESTEP_GTests_FILES_LOCATION "${CMAKE_CURRENT_LIST_DIR}")
 set(OCCT_TKDESTEP_GTests_FILES
     DESTEP_Provider_Test.cxx
     STEPControl_ActorRead_Test.cxx
+    DE_WrapperConfiguration_Test.cxx
     STEPConstruct_RenderingProperties_Test.cxx
     StepData_SelectMember_Test.cxx
     STEPControl_Tessellated_Test.cxx

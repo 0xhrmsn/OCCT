@@ -17,6 +17,7 @@
 #include <DE_ConfigurationNode.hxx>
 #include <DE_Provider.hxx>
 #include <DE_ValidationUtils.hxx>
+#include <Message.hxx>
 #include <Message_ProgressRange.hxx>
 #include <NCollection_Buffer.hxx>
 #include <OSD_File.hxx>
@@ -258,7 +259,11 @@ bool DE_Wrapper::Write(const TCollection_AsciiString& thePath,
 bool DE_Wrapper::Load(const TCollection_AsciiString& theResource, const bool theIsRecursive)
 {
   occ::handle<DE_ConfigurationContext> aResource = new DE_ConfigurationContext();
-  aResource->Load(theResource);
+  if (!aResource->Load(theResource))
+  {
+    Message::SendFail() << "Error: DE_Wrapper cannot load the configuration " << theResource;
+    return false;
+  }
   return Load(aResource, theIsRecursive);
 }
 
@@ -292,6 +297,13 @@ bool DE_Wrapper::Load(const occ::handle<DE_ConfigurationContext>& theResource,
       }
     }
     sort(theResource);
+    // all the nodes have read their parameters: the others are unknown, e.g. misspelled
+    for (const TCollection_AsciiString& aParam : theResource->UnusedParams())
+    {
+      Message::SendWarning()
+        << "Warning: DE_Wrapper ignores the configuration parameter read by no bound node "
+        << aParam;
+    }
   }
   return true;
 }
