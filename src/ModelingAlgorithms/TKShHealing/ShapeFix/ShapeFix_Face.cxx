@@ -513,8 +513,9 @@ bool ShapeFix_Face::Perform(const Message_ProgressRange& theProgress)
   TopExp_Explorer exp(myResult, TopAbs_FACE);
   for (; exp.More(); exp.Next())
   {
-    myFace                  = TopoDS::Face(exp.Current());
-    bool NeedCheckSplitWire = false;
+    myFace                                = TopoDS::Face(exp.Current());
+    const TopoDS_Shape aFaceToFix         = myFace;
+    bool               NeedCheckSplitWire = false;
 
     // perform second part of fixes on wires
     if (NeedFix(myFixWireMode))
@@ -725,6 +726,15 @@ bool ShapeFix_Face::Perform(const Message_ProgressRange& theProgress)
       {
         myStatus |= ShapeExtend::EncodeStatus(ShapeExtend_DONE8);
       }
+    }
+
+    // The fixes above are in myFace (and in the context, if any), not in the result: when the
+    // result is the face to fix (not split above), the loop below took myFace again from it, and
+    // Face(), or without a context Result() too, gave the face before these fixes (e.g. a wire
+    // whose orientation was fixed, with the status DONE2).
+    if (myResult.IsEqual(aFaceToFix))
+    {
+      myResult = myFace;
     }
   }
 

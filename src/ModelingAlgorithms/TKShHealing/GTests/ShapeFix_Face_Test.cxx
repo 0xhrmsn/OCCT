@@ -20,7 +20,12 @@
 #include <ShapeExtend_Status.hxx>
 #include <ShapeFix_Face.hxx>
 #include <BRepBuilderAPI_MakeEdge.hxx>
+#include <BRepBuilderAPI_MakePolygon.hxx>
 #include <BRepCheck_Analyzer.hxx>
+#include <BRepGProp.hxx>
+#include <Geom_Circle.hxx>
+#include <GProp_GProps.hxx>
+#include <gp_Ax2.hxx>
 #include <BRepLib_MakeWire.hxx>
 #include <Geom_ConicalSurface.hxx>
 #include <GeomAPI_Interpolate.hxx>
@@ -139,6 +144,44 @@ TEST(ShapeFix_FaceTest, NoCrashOnPeriodicConicalSingleWire)
   aFixer.Perform();
 
   EXPECT_FALSE(aFixer.Face().IsNull());
+}
+
+// A hole oriented as the outer wire, fixed without a context: Perform() reported the orientation
+// as fixed (DONE2), but Face() and Result() gave the face before the fix (area 100 + 4 Pi).
+TEST(ShapeFix_FaceTest, HoleOrientationFixedWithoutContext)
+{
+  const occ::handle<Geom_Circle> aCircle =
+    new Geom_Circle(gp_Ax2(gp_Pnt(5.0, 5.0, 0.0), gp_Dir(0.0, 0.0, 1.0)), 2.0);
+  const TopoDS_Wire       aHole = BRepLib_MakeWire(BRepBuilderAPI_MakeEdge(aCircle).Edge()).Wire();
+  BRepBuilderAPI_MakeFace aMakeFace(gp_Pln(gp_Pnt(0.0, 0.0, 0.0), gp_Dir(0.0, 0.0, 1.0)),
+                                    BRepBuilderAPI_MakePolygon(gp_Pnt(0.0, 0.0, 0.0),
+                                                               gp_Pnt(10.0, 0.0, 0.0),
+                                                               gp_Pnt(10.0, 10.0, 0.0),
+                                                               gp_Pnt(0.0, 10.0, 0.0),
+                                                               true)
+                                      .Wire(),
+                                    true);
+  aMakeFace.Add(aHole);
+  ASSERT_FALSE(BRepCheck_Analyzer(aMakeFace.Face()).IsValid());
+
+  const double anArea = 100.0 - 4.0 * M_PI;
+  for (const bool hasContext : {false, true})
+  {
+    ShapeFix_Face aFixer(aMakeFace.Face());
+    if (hasContext)
+    {
+      aFixer.SetContext(new ShapeBuild_ReShape);
+    }
+    EXPECT_TRUE(aFixer.Perform()) << hasContext;
+    EXPECT_TRUE(aFixer.Status(ShapeExtend_DONE2)) << hasContext;
+    for (const TopoDS_Shape& aFixed : {TopoDS_Shape(aFixer.Face()), aFixer.Result()})
+    {
+      EXPECT_TRUE(BRepCheck_Analyzer(aFixed).IsValid()) << hasContext;
+      GProp_GProps aProps;
+      BRepGProp::SurfaceProperties(aFixed, aProps);
+      EXPECT_NEAR(aProps.Mass(), anArea, 1.0e-9 * anArea) << hasContext;
+    }
+  }
 }
 
 // With a context supplied, the same input heals to a genuinely valid face.
