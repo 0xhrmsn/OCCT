@@ -16,6 +16,10 @@
 #include <Standard_ConstructionError.hxx>
 #include <TCollection_AsciiString.hxx>
 
+#include <cstring>
+#include <string>
+#include <vector>
+
 static OSD_SysType whereAmI()
 {
 #if defined(__digital__) || defined(__FreeBSD__) || defined(SUNOS) || defined(__APPLE__)           \
@@ -1016,56 +1020,50 @@ OSD_Path ::OSD_Path(const TCollection_AsciiString& aDependentName, const OSD_Sys
     : myUNCFlag(false),
       mySysDep(OSD_WindowsNT)
 {
-
-  int  i, j, len;
-  char __drive[_MAX_DRIVE];
-  char __dir[_MAX_DIR];
-  char __trek[_MAX_DIR];
-  char __fname[_MAX_FNAME];
-  char __ext[_MAX_EXT];
-
-  memset(__drive, 0, _MAX_DRIVE);
-  memset(__dir, 0, _MAX_DIR);
-  memset(__trek, 0, _MAX_DIR);
-  memset(__fname, 0, _MAX_FNAME);
-  memset(__ext, 0, _MAX_EXT);
-  char chr;
-
   TEST_RAISE(aSysType, "OSD_Path");
 
-  _splitpath(aDependentName.ToCString(), __drive, __dir, __fname, __ext);
-
-  myDisk      = __drive;
-  myName      = __fname;
-  myExtension = __ext;
-
+  // Split as _splitpath does: drive, folder up to the last separator, name, extension from the
+  // last dot. Buffers of _MAX_DIR made _splitpath fail on a longer folder (e.g. a long path with
+  // the prefix \\?\), and _splitpath_s mixes the parts beyond _MAX_PATH: the name lost its
+  // extension, so that no data exchange provider was found for it.
+  const std::string aFull(aDependentName.ToCString());
+  std::string       aRest = aFull;
+  if (aRest.size() >= 2 && aRest[1] == ':' && aRest[0] != '\\' && aRest[0] != '/')
   {
-    TCollection_AsciiString dir = __dir;
-    len                         = dir.Length();
+    myDisk = aRest.substr(0, 2).c_str();
+    aRest  = aRest.substr(2);
   }
+  const size_t aLastSep = aRest.find_last_of("\\/");
+  std::string  aDirStr =
+    aLastSep == std::string::npos ? std::string() : aRest.substr(0, aLastSep + 1);
+  const std::string aFile = aLastSep == std::string::npos ? aRest : aRest.substr(aLastSep + 1);
+  const size_t      aDot  = aFile.find_last_of('.');
+  myName                  = (aDot == std::string::npos ? aFile : aFile.substr(0, aDot)).c_str();
+  myExtension = (aDot == std::string::npos ? std::string() : aFile.substr(aDot)).c_str();
+  std::vector<char> aDir(aDirStr.begin(), aDirStr.end());
+  aDir.push_back('\0');
 
-  for (i = j = 0; i < len; ++i, ++j)
+  const size_t aLen = strlen(aDir.data());
+  std::string  aTrek;
+  aTrek.reserve(aLen);
+  for (size_t i = 0; i < aLen; ++i)
   {
-
-    chr = __dir[i];
-
+    const char chr = aDir[i];
     if (chr == '\\' || chr == '/')
-
-      __trek[j] = '|';
-
-    else if (chr == '.' && (i + 1) < len && __dir[i + 1] == '.')
     {
-
-      __trek[j] = '^';
+      aTrek += '|';
+    }
+    else if (chr == '.' && (i + 1) < aLen && aDir[i + 1] == '.')
+    {
+      aTrek += '^';
       ++i;
     }
     else
-
-      __trek[j] = chr;
-
-  } // end for
-  __trek[j]                    = '\0';
-  TCollection_AsciiString trek = __trek;
+    {
+      aTrek += chr;
+    }
+  }
+  TCollection_AsciiString trek(aTrek.c_str());
   _remove_dup(trek);
   myTrek = trek;
 
@@ -1134,40 +1132,31 @@ void OSD_Path ::SetValues(const TCollection_AsciiString& aNode,
 
 void OSD_Path ::SystemName(TCollection_AsciiString& FullName, const OSD_SysType aType) const
 {
-
-  int                     i, j;
-  TCollection_AsciiString fullPath;
-  char                    trek[_MAX_PATH];
-  char                    chr;
-
-  memset(trek, 0, _MAX_PATH);
-
   TEST_RAISE(aType, "SystemName");
 
-  for (i = j = 1; i <= myTrek.Length() && j <= _MAX_PATH; ++i, ++j)
+  // A buffer of _MAX_PATH cut a longer trek without a terminating null, and ".." near its end was
+  // copied one byte past it.
+  std::string aTrek;
+  aTrek.reserve(static_cast<size_t>(myTrek.Length()) + 8);
+  for (int i = 1; i <= myTrek.Length(); ++i)
   {
-
-    chr = myTrek.Value(i);
-
+    const char chr = myTrek.Value(i);
     if (chr == '|')
     {
-
-      trek[j - 1] = '/';
+      aTrek += '/';
     }
-    else if (chr == '^' && j <= _MAX_PATH - 1)
+    else if (chr == '^')
     {
-
-      strcpy(&(trek[(j++) - 1]), "..");
+      aTrek += "..";
     }
     else
+    {
+      aTrek += chr;
+    }
+  }
 
-      trek[j - 1] = chr;
-
-  } // end for
-
-  fullPath = myDisk + TCollection_AsciiString(trek);
-
-  if (trek[0])
+  TCollection_AsciiString fullPath = myDisk + TCollection_AsciiString(aTrek.c_str());
+  if (!aTrek.empty())
     fullPath += "/";
 
   fullPath += (myName + myExtension);

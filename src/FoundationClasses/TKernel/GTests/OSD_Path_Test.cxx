@@ -17,6 +17,8 @@
 
 #include <gtest/gtest.h>
 
+#include <string>
+
 // Test fixture for OSD_Path tests
 class OSD_PathTest : public testing::Test
 {
@@ -279,3 +281,26 @@ TEST_F(OSD_PathTest, OCC309_CurrentDirectoryAndUpTrek)
 //=================================================================================================
 // Validation Tests
 //=================================================================================================
+#ifdef _WIN32
+// The folder of a long path did not fit the buffers of _splitpath (256 characters): the path lost
+// its parts, its extension included, so that no data exchange provider was found for it; a long
+// folder was cut without a terminating null when the path was rebuilt.
+TEST_F(OSD_PathTest, LongWindowsPath)
+{
+  const std::string aFolder = std::string("C:\\Users\\a\\") + std::string(150, 'x') + "\\"
+                              + std::string(150, 'y') + "\\..\\" + std::string(150, 'z');
+  for (const std::string& aPrefix : {std::string(), std::string("\\\\?\\")})
+  {
+    const TCollection_AsciiString aName((aPrefix + aFolder + "\\model.step").c_str());
+    const OSD_Path                aPath(aName);
+    EXPECT_STREQ(aPath.Name().ToCString(), "model") << aPrefix;
+    EXPECT_STREQ(aPath.Extension().ToCString(), ".step") << aPrefix;
+
+    TCollection_AsciiString aSystemName;
+    aPath.SystemName(aSystemName);
+    EXPECT_GT(aSystemName.Length(), 450) << aPrefix;
+    EXPECT_NE(aSystemName.Search(std::string(150, 'z').c_str()), -1) << aPrefix;
+    EXPECT_NE(aSystemName.Search("model.step"), -1) << aPrefix;
+  }
+}
+#endif
