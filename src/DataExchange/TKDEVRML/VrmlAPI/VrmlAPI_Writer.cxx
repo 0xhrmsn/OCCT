@@ -40,8 +40,58 @@
 #include <VrmlConverter_ShadedShape.hxx>
 #include <VrmlConverter_ShadingAspect.hxx>
 #include <VrmlConverter_WFDeflectionShape.hxx>
+#include <VrmlData_Appearance.hxx>
+#include <VrmlData_Material.hxx>
 #include <VrmlData_Scene.hxx>
 #include <VrmlData_ShapeConvert.hxx>
+
+#include <algorithm>
+
+namespace
+{
+//! First value of an array of the material, or theDefault when it is empty.
+template <typename T>
+T firstValue(const occ::handle<NCollection_HArray1<T>>& theArray, const T& theDefault)
+{
+  return theArray.IsNull() || theArray->IsEmpty() ? theDefault : theArray->First();
+}
+
+//! Largest component of a color.
+double maxComponent(const Quantity_Color& theColor)
+{
+  return std::max({theColor.Red(), theColor.Green(), theColor.Blue()});
+}
+
+//! Registers in theScene the appearance of the faces converted by VrmlData_ShapeConvert, made of
+//! theMaterial: the converter uses an appearance of this name instead of its own default.
+void addFrontAppearance(VrmlData_Scene& theScene, const occ::handle<Vrml_Material>& theMaterial)
+{
+  const Quantity_Color aDiffuse =
+    firstValue(theMaterial->DiffuseColor(), Quantity_Color(Quantity_NOC_GRAY75));
+  const Quantity_Color anAmbient =
+    firstValue(theMaterial->AmbientColor(), Quantity_Color(Quantity_NOC_BLACK));
+  // VRML 2.0 has no ambient color but an intensity applied to the diffuse color
+  const double aDiffuseMax = maxComponent(aDiffuse);
+  const double anIntensity =
+    aDiffuseMax > 0.0 ? std::min(1.0, maxComponent(anAmbient) / aDiffuseMax) : 0.0;
+  const occ::handle<VrmlData_Material> aMaterial =
+    new VrmlData_Material(theScene,
+                          nullptr,
+                          anIntensity,
+                          firstValue(theMaterial->Shininess(), 0.1),
+                          firstValue(theMaterial->Transparency(), 0.0));
+  aMaterial->SetDiffuseColor(aDiffuse);
+  aMaterial->SetEmissiveColor(
+    firstValue(theMaterial->EmissiveColor(), Quantity_Color(Quantity_NOC_BLACK)));
+  aMaterial->SetSpecularColor(
+    firstValue(theMaterial->SpecularColor(), Quantity_Color(Quantity_NOC_BLACK)));
+  theScene.AddNode(aMaterial, false);
+  const occ::handle<VrmlData_Appearance> anAppearance =
+    new VrmlData_Appearance(theScene, "__defaultMaterialFace");
+  anAppearance->SetMaterial(aMaterial);
+  theScene.AddNode(anAppearance, false);
+}
+} // namespace
 
 VrmlAPI_Writer::VrmlAPI_Writer()
 {
@@ -479,7 +529,12 @@ bool VrmlAPI_Writer::write_v2(const TopoDS_Shape& aShape, Standard_OStream& theO
     anExtEdge = true;
   }
 
-  VrmlData_Scene        aScene;
+  VrmlData_Scene aScene;
+  if (anExtFace)
+  {
+    // the front material, as in VRML 1.0; it was ignored and the faces had a fixed golden color
+    addFrontAppearance(aScene, myFrontMaterial);
+  }
   VrmlData_ShapeConvert aConv(aScene);
   aConv.AddShape(aShape);
   aConv.Convert(anExtFace, anExtEdge);

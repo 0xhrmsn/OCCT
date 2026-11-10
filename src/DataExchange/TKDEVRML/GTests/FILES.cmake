@@ -3,4 +3,5 @@ set(OCCT_TKDEVRML_GTests_FILES_LOCATION "${CMAKE_CURRENT_LIST_DIR}")
 
 set(OCCT_TKDEVRML_GTests_FILES
   DEVRML_Provider_Test.cxx
+  VrmlAPI_Writer_Test.cxx
 )
