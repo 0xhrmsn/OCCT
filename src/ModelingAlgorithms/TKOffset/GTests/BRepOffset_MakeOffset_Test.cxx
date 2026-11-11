@@ -1148,6 +1148,48 @@ TEST(BRepOffset_MakeOffsetTest, CollapsedCircularWireOffsetIsNotDone)
   EXPECT_FALSE(isDone);
 }
 
+// The check above took the largest principal curvature for both directions of the offset. An
+// offset against the normal of the surface reaches the center of the most negative curvature: a
+// surface bent in one direction only (as a cylinder) or with unequal radii, offset towards its
+// centers of curvature against its normal, passed the check and gave a self-intersecting offset.
+TEST(BRepOffset_MakeOffsetTest, OffsetShape_FreeFormBeyondCurvatureAgainstNormal_ReportsError)
+{
+  // z = theZI (i - 2)^2 + theZJ (j - 2)^2 on the 3x3 poles spaced by 10: radius of curvature
+  // 100 / |theZ| at the centre, i.e. 20 for |theZ| = 5 and 100 for |theZ| = 1
+  const auto aPatch = [](const double theZI, const double theZJ) {
+    NCollection_Array2<gp_Pnt> aPoles(1, 3, 1, 3);
+    for (int i = 1; i <= 3; ++i)
+    {
+      for (int j = 1; j <= 3; ++j)
+      {
+        aPoles(i, j) = gp_Pnt((i - 2) * 10.0,
+                              (j - 2) * 10.0,
+                              (i - 2) * (i - 2) * theZI + (j - 2) * (j - 2) * theZJ);
+      }
+    }
+    return BRepBuilderAPI_MakeFace(new Geom_BezierSurface(aPoles), Precision::Confusion()).Face();
+  };
+  const auto anError = [](const TopoDS_Face& theFace, const double theOffset) {
+    BRepOffset_MakeOffset anOffsetMaker;
+    anOffsetMaker.Initialize(theFace, theOffset, 1.0e-4);
+    anOffsetMaker.MakeOffsetShape();
+    return anOffsetMaker.Error();
+  };
+  // bent towards -Z (the centres of curvature are against the normal +Z)
+  const TopoDS_Face aCylinder = aPatch(-5.0, 0.0);
+  const TopoDS_Face anEllipse = aPatch(-5.0, -1.0);
+  EXPECT_EQ(anError(aCylinder, -30.0), BRepOffset_OffsetExceedsCurvature);
+  EXPECT_EQ(anError(anEllipse, -30.0), BRepOffset_OffsetExceedsCurvature);
+  // the same offsets with the face reversed: along the normal of the face
+  EXPECT_EQ(anError(TopoDS::Face(aCylinder.Reversed()), 30.0), BRepOffset_OffsetExceedsCurvature);
+  // the mirrored cylinder offset along its normal was already reported
+  EXPECT_EQ(anError(aPatch(5.0, 0.0), 30.0), BRepOffset_OffsetExceedsCurvature);
+  // below the radius, and to the convex side, the offset is done
+  EXPECT_EQ(anError(aCylinder, -10.0), BRepOffset_NoError);
+  EXPECT_EQ(anError(anEllipse, -15.0), BRepOffset_NoError);
+  EXPECT_EQ(anError(aCylinder, 30.0), BRepOffset_NoError);
+}
+
 // GetSafeOffset was public but not exported: an application could not call it to choose
 // between the simple algorithm and the offset by join.
 TEST(BRepOffset_MakeSimpleOffsetTest, GetSafeOffset_SharpAndSmoothShapes)

@@ -4773,9 +4773,12 @@ bool offsetExceedsCurvature(const TopoDS_Face&               theFace,
       {
         continue;
       }
-      // the curvature is positive when the surface bends towards its normal
-      const double aMaxCurvature = std::max(aProps.MaxCurvature(), aProps.MinCurvature());
-      if (aMaxCurvature * theOffset < 1.0 - Precision::Confusion())
+      // the curvature is positive when the surface bends towards its normal: an offset along the
+      // normal reaches the center of the largest curvature, an offset against it the center of
+      // the most negative one
+      const double aReach =
+        std::max(aProps.MaxCurvature() * theOffset, aProps.MinCurvature() * theOffset);
+      if (aReach < 1.0 - Precision::Confusion())
       {
         continue;
       }
