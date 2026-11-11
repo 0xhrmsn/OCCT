@@ -46,7 +46,11 @@
 #include <BRep_Tool.hxx>
 #include <BRepBuilderAPI_FindPlane.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
+#include <Bnd_Box.hxx>
+#include <BRepBndLib.hxx>
 #include <BRepClass3d_SolidClassifier.hxx>
+#include <BRepGProp.hxx>
+#include <GProp_GProps.hxx>
 #include <BRepFill_CompatibleWires.hxx>
 #include <BRepFill_Generator.hxx>
 #include <BRepLib.hxx>
@@ -191,6 +195,45 @@ static bool IsSameOriented(const TopoDS_Shape& aFace, const TopoDS_Shape& aShell
 
 //=================================================================================================
 
+//! Makes a solid of theShell, reversing the shell when the solid is inside out. The classification
+//! of the infinite point casts a ray from a random point of a face and keeps its outermost
+//! intersection: on a large BSpline face crossed many times (e.g. a loft of a twisted profile with
+//! many teeth) it can report the solid inside out, which gave a valid solid of negative volume.
+//! The sign of the volume does not depend on such an intersection; the classification is kept
+//! for a solid whose volume is too small to have a sign.
+static TopoDS_Solid orientedSolid(const TopoDS_Shell& theShell)
+{
+  BRep_Builder aBB;
+  TopoDS_Solid aSolid;
+  aBB.MakeSolid(aSolid);
+  aBB.Add(aSolid, theShell);
+
+  bool         isInsideOut = false;
+  GProp_GProps aProps;
+  BRepGProp::VolumeProperties(aSolid, aProps);
+  Bnd_Box aBox;
+  BRepBndLib::Add(aSolid, aBox);
+  const double aSize = aBox.IsVoid() ? 0.0 : std::sqrt(aBox.SquareExtent());
+  if (std::abs(aProps.Mass()) > 1.0e-9 * aSize * aSize * aSize)
+  {
+    isInsideOut = aProps.Mass() < 0.0;
+  }
+  else
+  {
+    BRepClass3d_SolidClassifier aClassifier(aSolid);
+    aClassifier.PerformInfinitePoint(Precision::Confusion());
+    isInsideOut = aClassifier.State() == TopAbs_IN;
+  }
+  if (isInsideOut)
+  {
+    aBB.MakeSolid(aSolid);
+    aBB.Add(aSolid, TopoDS::Shell(theShell.Reversed()));
+  }
+  return aSolid;
+}
+
+//=================================================================================================
+
 static TopoDS_Solid MakeSolid(TopoDS_Shell&      shell,
                               const TopoDS_Wire& wire1,
                               const TopoDS_Wire& wire2,
@@ -237,21 +280,7 @@ static TopoDS_Solid MakeSolid(TopoDS_Shell&      shell,
     }
   }
 
-  TopoDS_Solid solid;
-  BB.MakeSolid(solid);
-  BB.Add(solid, shell);
-
-  // verify the orientation the solid
-  BRepClass3d_SolidClassifier clas3d(solid);
-  clas3d.PerformInfinitePoint(Precision::Confusion());
-  if (clas3d.State() == TopAbs_IN)
-  {
-    BB.MakeSolid(solid);
-    TopoDS_Shape aLocalShape = shell.Reversed();
-    BB.Add(solid, TopoDS::Shell(aLocalShape));
-    //    B.Add(solid, TopoDS::Shell(newShell.Reversed()));
-  }
-
+  TopoDS_Solid solid = orientedSolid(shell);
   solid.Closed(true);
   return solid;
 }
@@ -596,22 +625,7 @@ void BRepOffsetAPI_ThruSections::CreateRuled()
     if (vClosed)
     {
 
-      TopoDS_Solid solid;
-      BRep_Builder B;
-      B.MakeSolid(solid);
-      B.Add(solid, shell);
-
-      // verify the orientation of the solid
-      BRepClass3d_SolidClassifier clas3d(solid);
-      clas3d.PerformInfinitePoint(Precision::Confusion());
-      if (clas3d.State() == TopAbs_IN)
-      {
-        B.MakeSolid(solid);
-        TopoDS_Shape aLocalShape = shell.Reversed();
-        B.Add(solid, TopoDS::Shell(aLocalShape));
-        //	B.Add(solid, TopoDS::Shell(shell.Reversed()));
-      }
-      myShape = solid;
+      myShape = orientedSolid(shell);
     }
 
     else
@@ -1051,21 +1065,7 @@ void BRepOffsetAPI_ThruSections::CreateSmoothed()
     if (vClosed)
     {
 
-      TopoDS_Solid solid;
-      B.MakeSolid(solid);
-      B.Add(solid, shell);
-
-      // verify the orientation the solid
-      BRepClass3d_SolidClassifier clas3d(solid);
-      clas3d.PerformInfinitePoint(Precision::Confusion());
-      if (clas3d.State() == TopAbs_IN)
-      {
-        B.MakeSolid(solid);
-        TopoDS_Shape aLocalShape = shell.Reversed();
-        B.Add(solid, TopoDS::Shell(aLocalShape));
-        //	B.Add(solid, TopoDS::Shell(shell.Reversed()));
-      }
-      myShape = solid;
+      myShape = orientedSolid(shell);
     }
 
     else
