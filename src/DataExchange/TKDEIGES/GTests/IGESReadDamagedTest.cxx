@@ -11,6 +11,7 @@
 // Alternatively, this file may be used under the terms of Open CASCADE
 // commercial license or contractual agreement.
 
+#include <BRep_Tool.hxx>
 #include <BRepFilletAPI_MakeFillet.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <IGESControl_Controller.hxx>
@@ -19,6 +20,7 @@
 #include <Interface_Check.hxx>
 #include <Interface_CheckIterator.hxx>
 #include <Interface_InterfaceModel.hxx>
+#include <NCollection_HArray2.hxx>
 #include <TopExp_Explorer.hxx>
 #include <TopoDS.hxx>
 #include <XSControl_TransferReader.hxx>
@@ -29,6 +31,7 @@
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepPrimAPI_MakeSphere.hxx>
 
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -67,11 +70,12 @@ std::string igesLine(const std::string& theData, const char theSection, const in
   return aLine;
 }
 
-//! Directory entry of an entity (two lines).
+//! Directory entry of an entity (two lines); theTransf is the entry of its transformation matrix.
 std::vector<std::string> directoryEntry(const int theType,
                                         const int theParam,
                                         const int theForm,
-                                        const int theNumber)
+                                        const int theNumber,
+                                        const int theTransf = 0)
 {
   char aData[96];
   std::snprintf(aData,
@@ -83,7 +87,7 @@ std::vector<std::string> directoryEntry(const int theType,
                 0,
                 0,
                 0,
-                0,
+                theTransf,
                 0,
                 "00000000");
   std::vector<std::string> aLines{igesLine(aData, 'D', theNumber)};
@@ -452,4 +456,152 @@ TEST(IGESReadDamagedTest, GlobalCheckKeptPerModel)
   aSecond.reset();
   EXPECT_EQ(aFirst.WS()->Model()->GlobalCheck()->NbFails(), aNbFails)
     << "first model after the destruction of the second one";
+}
+
+namespace
+{
+//! Result of the transfer of a small IGES file made of a group (DE 1) of a composite curve (DE 3)
+//! with a transformation matrix (DE 5), a line (DE 7) and further entities given by the caller.
+struct LocatedCurveResult
+{
+  bool   IsRead  = false;
+  int    NbFails = 0; //!< fails of the transfer
+  bool   HasEdge = false;
+  double XMin    = 0.0; //!< smallest X of the vertices of the result
+  double XMax    = 0.0; //!< largest X of the vertices of the result
+};
+
+//! Writes and transfers the file. theDE lists the directory entries after DE 7: type, form;
+//! theParams the parameter lines of DE 3, 5, 7 and of the entries of theDE.
+LocatedCurveResult transferLocatedCurve(const std::vector<std::pair<int, int>>& theDE,
+                                        const std::vector<std::string>&         theParams)
+{
+  std::vector<std::string> aLines{igesLine("Located curve", 'S', 1)};
+  aLines.push_back(
+    igesLine("1H,,1H;,4Htest,8Htest.igs,4Htest,4Htest,32,38,6,308,15,4Htest,1.,2,", 'G', 1));
+  aLines.push_back(
+    igesLine("2HMM,1,0.01,15H20261111.120000,1.E-07,100.,4Htest,4Htest,11,0;", 'G', 2));
+  std::vector<std::pair<int, int>> anEntries{{402, 1}, {102, 0}, {124, 0}, {110, 0}};
+  anEntries.insert(anEntries.end(), theDE.begin(), theDE.end());
+  for (size_t i = 0; i < anEntries.size(); ++i)
+  {
+    const int aDE = 2 * int(i) + 1;
+    for (const std::string& aLine :
+         directoryEntry(anEntries[i].first, int(i) + 1, anEntries[i].second, aDE, aDE == 3 ? 5 : 0))
+    {
+      aLines.push_back(aLine);
+    }
+  }
+  std::vector<std::string> aParams{"402,1,3;"};
+  aParams.insert(aParams.end(), theParams.begin(), theParams.end());
+  for (size_t i = 0; i < aParams.size(); ++i)
+  {
+    aLines.push_back(parameterLine(aParams[i], 2 * int(i) + 1, int(i) + 1));
+  }
+  char aTerminate[64];
+  std::snprintf(aTerminate,
+                sizeof(aTerminate),
+                "S%7dG%7dD%7dP%7d",
+                1,
+                2,
+                2 * int(anEntries.size()),
+                int(aParams.size()));
+  aLines.push_back(igesLine(aTerminate, 'T', 1));
+
+  const std::filesystem::path aPath = uniqueTempPath("IGESReadDamagedTest_Located");
+  {
+    std::ofstream aFile(aPath);
+    for (const std::string& aLine : aLines)
+    {
+      aFile << aLine << "\n";
+    }
+  }
+  LocatedCurveResult aResult;
+  IGESControl_Reader aReader;
+  aResult.IsRead = aReader.ReadFile(aPath.string().c_str()) == IFSelect_RetDone;
+  std::error_code anError;
+  std::filesystem::remove(aPath, anError);
+  if (!aResult.IsRead)
+  {
+    return aResult;
+  }
+  aReader.TransferRoots();
+  const Interface_CheckIterator aChecks = aReader.WS()->TransferReader()->LastCheckList();
+  for (aChecks.Start(); aChecks.More(); aChecks.Next())
+  {
+    aResult.NbFails += aChecks.Value()->NbFails();
+  }
+  aResult.XMin = 1.0e100;
+  aResult.XMax = -1.0e100;
+  for (int i = 1; i <= aReader.NbShapes(); ++i)
+  {
+    for (TopExp_Explorer anExp(aReader.Shape(i), TopAbs_VERTEX); anExp.More(); anExp.Next())
+    {
+      aResult.HasEdge = true;
+      const double aX = BRep_Tool::Pnt(TopoDS::Vertex(anExp.Current())).X();
+      aResult.XMin    = std::min(aResult.XMin, aX);
+      aResult.XMax    = std::max(aResult.XMax, aX);
+    }
+  }
+  return aResult;
+}
+} // namespace
+
+// A composite curve with a transformation matrix and a single parent associativity naming the
+// curve as its own parent, or two curves parents of each other: CompoundLocation() recursed
+// without end and the process died of a stack overflow. The location is refused with a fail.
+TEST(IGESReadDamagedTest, CyclicSingleParent_Reported)
+{
+  IGESControl_Controller::Init();
+  const std::string aCurve  = "102,1,7;";
+  const std::string aMatrix = "124,1.,0.,0.,5.,0.,1.,0.,0.,0.,0.,1.,0.;";
+  const std::string aLine   = "110,0.,0.,0.,10.,0.,0.;";
+
+  // guard: without the associativity the curve is moved by the matrix
+  const LocatedCurveResult aGuard = transferLocatedCurve({}, {aCurve, aMatrix, aLine});
+  ASSERT_TRUE(aGuard.IsRead);
+  EXPECT_TRUE(aGuard.HasEdge);
+  EXPECT_EQ(aGuard.NbFails, 0);
+  EXPECT_NEAR(aGuard.XMin, 5.0, 1.0e-9);
+  EXPECT_NEAR(aGuard.XMax, 15.0, 1.0e-9);
+
+  // DE 9: single parent associativity (402 form 9) whose parent is the curve itself
+  for (int aRead = 0; aRead < 2; ++aRead)
+  {
+    const LocatedCurveResult aSelf =
+      transferLocatedCurve({{402, 9}}, {"102,1,7,0,1,9;", aMatrix, aLine, "402,1,1,3,7;"});
+    ASSERT_TRUE(aSelf.IsRead);
+    EXPECT_GT(aSelf.NbFails, 0) << aRead;
+  }
+  // DE 9 and 13: two composite curves (DE 3 and 11), each the parent of the other
+  const LocatedCurveResult aPair = transferLocatedCurve(
+    {{402, 9}, {102, 0}, {402, 9}},
+    {"102,1,7,0,1,9;", aMatrix, aLine, "402,1,1,11,7;", "102,1,7,0,1,13;", "402,1,1,3,7;"});
+  ASSERT_TRUE(aPair.IsRead);
+  EXPECT_GT(aPair.NbFails, 0);
+}
+
+// A transformation matrix with too few numbers: the elements that are not read were left
+// uninitialized, and the curve that uses the matrix was moved by whatever the memory held. They
+// now keep the value of the identity, so the curve is moved by the elements that are read.
+TEST(IGESReadDamagedTest, TruncatedTransformationMatrix_Deterministic)
+{
+  IGESControl_Controller::Init();
+  for (int aRead = 0; aRead < 3; ++aRead)
+  {
+    // fill freed memory of the size of the matrix with values far from the identity
+    {
+      std::vector<occ::handle<NCollection_HArray2<double>>> aGarbage;
+      for (int i = 0; i < 64; ++i)
+      {
+        aGarbage.push_back(new NCollection_HArray2<double>(1, 3, 1, 4, 7.0e3));
+      }
+    }
+    const LocatedCurveResult aResult =
+      transferLocatedCurve({}, {"102,1,7;", "124,1.,0.,0.,5.,0.,1.;", "110,0.,0.,0.,10.,0.,0.;"});
+    ASSERT_TRUE(aResult.IsRead);
+    ASSERT_TRUE(aResult.HasEdge) << aRead;
+    EXPECT_NEAR(aResult.XMin, 5.0, 1.0e-9) << aRead;
+    EXPECT_NEAR(aResult.XMax, 15.0, 1.0e-9) << aRead;
+  }
 }

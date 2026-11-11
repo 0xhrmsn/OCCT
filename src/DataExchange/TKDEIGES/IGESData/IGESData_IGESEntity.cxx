@@ -499,13 +499,30 @@ gp_GTrsf IGESData_IGESEntity::VectorLocation() const
 
 gp_GTrsf IGESData_IGESEntity::CompoundLocation() const
 {
-  gp_GTrsf loca = Location();
-  if (!HasOneParent())
+  // the location of each parent is applied in turn; a damaged file may give a cycle of parents
+  // (an entity being its own parent) or a missing parent: the recursion was unbounded
+  constexpr int aMaxNbParents = 100; // as IGESToBRep_TransferGuard for nested entities
+  gp_GTrsf      loca          = Location();
+  int           aNbParents    = 0;
+  occ::handle<IGESData_IGESEntity> aParent;
+  for (const IGESData_IGESEntity* anEntity = this; anEntity->HasOneParent();
+       anEntity                            = aParent.get())
   {
-    return loca;
+    aParent = anEntity->UniqueParent();
+    if (aParent.IsNull())
+    {
+      throw Interface_InterfaceError("IGESEntity : CompoundLocation, null parent");
+    }
+    if (aParent.get() == this)
+    {
+      throw Interface_InterfaceError("IGESEntity : CompoundLocation, cyclic parents");
+    }
+    if (++aNbParents > aMaxNbParents)
+    {
+      throw Interface_InterfaceError("IGESEntity : CompoundLocation, too many or cyclic parents");
+    }
+    loca.PreMultiply(aParent->Location());
   }
-  gp_GTrsf locp = UniqueParent()->CompoundLocation();
-  loca.PreMultiply(locp);
   return loca;
 }
 

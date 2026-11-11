@@ -49,6 +49,11 @@ void IGESGeom_ToolTransformationMatrix::ReadOwnParams(
   // bool st; //szv#4:S4163:12Mar99 not needed
   double                                   temp;
   occ::handle<NCollection_HArray2<double>> aMatrix = new NCollection_HArray2<double>(1, 3, 1, 4);
+  // an element that is not read keeps the value of the identity, not an uninitialized one
+  aMatrix->Init(0.0);
+  aMatrix->SetValue(1, 1, 1.0);
+  aMatrix->SetValue(2, 2, 1.0);
+  aMatrix->SetValue(3, 3, 1.0);
 
   for (int I = 1; I <= 3; I++)
   {
