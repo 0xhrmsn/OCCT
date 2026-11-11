@@ -431,6 +431,52 @@ TEST(BRepFilletAPI_MakeFillet2dTest, ModifyAndRemoveBeforeBuild_History)
   EXPECT_TRUE(anAlgo.Generated(aBack).IsEmpty());
 }
 
+// The fillet or chamfer given to Modify or Remove is a reference to an item of FilletEdges() or
+// ChamferEdges() (TopoDS::Edge returns a reference to its argument): the builder removes that item,
+// and the history read the freed item afterwards (heap-use-after-free under AddressSanitizer). The
+// history is that of the copies.
+TEST(BRepFilletAPI_MakeFillet2dTest, ModifyAndRemoveByListReference_History)
+{
+  const TopoDS_Face          aFace   = rectangle(20, 10);
+  const TopoDS_Vertex        aV1     = vertexAt(aFace, gp_Pnt(20, 0, 0));
+  const TopoDS_Vertex        aV2     = vertexAt(aFace, gp_Pnt(0, 10, 0));
+  const TopoDS_Vertex        aV3     = vertexAt(aFace, gp_Pnt(0, 0, 0));
+  const TopoDS_Vertex        aV4     = vertexAt(aFace, gp_Pnt(20, 10, 0));
+  const TopoDS_Edge          aBottom = edgeThrough(aFace, gp_Pnt(10, 0, 0));
+  const TopoDS_Edge          aLeft   = edgeThrough(aFace, gp_Pnt(0, 5, 0));
+  const TopoDS_Edge          aRight  = edgeThrough(aFace, gp_Pnt(20, 5, 0));
+  const TopoDS_Edge          aTop    = edgeThrough(aFace, gp_Pnt(10, 10, 0));
+  BRepFilletAPI_MakeFillet2d anAlgo(aFace);
+  anAlgo.AddFillet(aV1, 2.0);
+  anAlgo.AddFillet(aV2, 2.0);
+  anAlgo.AddChamfer(anAlgo.DescendantEdge(aBottom), anAlgo.DescendantEdge(aLeft), 1.0, 1.0);
+  anAlgo.AddChamfer(anAlgo.DescendantEdge(aRight), anAlgo.DescendantEdge(aTop), 1.0, 1.0);
+  ASSERT_EQ(anAlgo.FilletEdges().Length(), 2);
+  ASSERT_EQ(anAlgo.ChamferEdges().Length(), 2);
+
+  const TopoDS_Edge aF1b = anAlgo.ModifyFillet(TopoDS::Edge(anAlgo.FilletEdges().First()), 3.0);
+  ASSERT_FALSE(aF1b.IsNull());
+  // the modified fillet is now the last item; the first one is the fillet at aV2
+  const TopoDS_Vertex aBack = anAlgo.RemoveFillet(TopoDS::Edge(anAlgo.FilletEdges().First()));
+  ASSERT_FALSE(aBack.IsNull());
+  const TopoDS_Edge aC3b = anAlgo.ModifyChamfer(TopoDS::Edge(anAlgo.ChamferEdges().First()),
+                                                anAlgo.DescendantEdge(aBottom),
+                                                anAlgo.DescendantEdge(aLeft),
+                                                2.0,
+                                                2.0);
+  ASSERT_FALSE(aC3b.IsNull());
+  // the modified chamfer is now the last item; the first one is the chamfer at aV4
+  const TopoDS_Vertex aBack4 = anAlgo.RemoveChamfer(TopoDS::Edge(anAlgo.ChamferEdges().First()));
+  ASSERT_FALSE(aBack4.IsNull());
+
+  anAlgo.Build();
+  ASSERT_TRUE(anAlgo.IsDone());
+  EXPECT_TRUE(checkCorner(anAlgo, aV1, 3.0 * (std::sqrt(2.0) - 1.0)).IsSame(aF1b));
+  EXPECT_TRUE(checkCorner(anAlgo, aV3, 2.0 * std::sqrt(0.5)).IsSame(aC3b));
+  EXPECT_TRUE(anAlgo.Generated(aV2).IsEmpty());
+  EXPECT_TRUE(anAlgo.Generated(aV4).IsEmpty());
+}
+
 // Modified of an edge is available before Build, as before.
 TEST(BRepFilletAPI_MakeFillet2dTest, ModifiedEdgeBeforeBuild)
 {

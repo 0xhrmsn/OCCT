@@ -65,8 +65,10 @@ TopoDS_Edge BRepFilletAPI_MakeFillet2d::AddFillet(const TopoDS_Vertex& V, const 
 
 TopoDS_Edge BRepFilletAPI_MakeFillet2d::ModifyFillet(const TopoDS_Edge& Fillet, const double Radius)
 {
-  const TopoDS_Edge aFillet = myMakeChFi2d.ModifyFillet(Fillet, Radius);
-  moveCorner(Fillet, aFillet);
+  // Fillet may refer to an item of FilletEdges(), which the builder removes: keep a copy
+  const TopoDS_Edge anOld   = Fillet;
+  const TopoDS_Edge aFillet = myMakeChFi2d.ModifyFillet(anOld, Radius);
+  moveCorner(anOld, aFillet);
   return aFillet;
 }
 
@@ -74,8 +76,10 @@ TopoDS_Edge BRepFilletAPI_MakeFillet2d::ModifyFillet(const TopoDS_Edge& Fillet, 
 
 TopoDS_Vertex BRepFilletAPI_MakeFillet2d::RemoveFillet(const TopoDS_Edge& Fillet)
 {
-  const TopoDS_Vertex aVertex = myMakeChFi2d.RemoveFillet(Fillet);
-  moveCorner(Fillet, TopoDS_Edge());
+  // Fillet may refer to an item of FilletEdges(), which the builder removes: keep a copy
+  const TopoDS_Edge   anOld   = Fillet;
+  const TopoDS_Vertex aVertex = myMakeChFi2d.RemoveFillet(anOld);
+  moveCorner(anOld, TopoDS_Edge());
   return aVertex;
 }
 
@@ -113,8 +117,10 @@ TopoDS_Edge BRepFilletAPI_MakeFillet2d::ModifyChamfer(const TopoDS_Edge& Chamfer
                                                       const double       D1,
                                                       const double       D2)
 {
-  const TopoDS_Edge aChamfer = myMakeChFi2d.ModifyChamfer(Chamfer, E1, E2, D1, D2);
-  moveCorner(Chamfer, aChamfer);
+  // Chamfer may refer to an item of ChamferEdges(), which the builder removes: keep a copy
+  const TopoDS_Edge anOld    = Chamfer;
+  const TopoDS_Edge aChamfer = myMakeChFi2d.ModifyChamfer(anOld, E1, E2, D1, D2);
+  moveCorner(anOld, aChamfer);
   return aChamfer;
 }
 
@@ -125,8 +131,10 @@ TopoDS_Edge BRepFilletAPI_MakeFillet2d::ModifyChamfer(const TopoDS_Edge& Chamfer
                                                       const double       D,
                                                       const double       Ang)
 {
-  const TopoDS_Edge aChamfer = myMakeChFi2d.ModifyChamfer(Chamfer, E, D, Ang);
-  moveCorner(Chamfer, aChamfer);
+  // Chamfer may refer to an item of ChamferEdges(), which the builder removes: keep a copy
+  const TopoDS_Edge anOld    = Chamfer;
+  const TopoDS_Edge aChamfer = myMakeChFi2d.ModifyChamfer(anOld, E, D, Ang);
+  moveCorner(anOld, aChamfer);
   return aChamfer;
 }
 
@@ -134,8 +142,10 @@ TopoDS_Edge BRepFilletAPI_MakeFillet2d::ModifyChamfer(const TopoDS_Edge& Chamfer
 
 TopoDS_Vertex BRepFilletAPI_MakeFillet2d::RemoveChamfer(const TopoDS_Edge& Chamfer)
 {
-  const TopoDS_Vertex aVertex = myMakeChFi2d.RemoveChamfer(Chamfer);
-  moveCorner(Chamfer, TopoDS_Edge());
+  // Chamfer may refer to an item of ChamferEdges(), which the builder removes: keep a copy
+  const TopoDS_Edge   anOld   = Chamfer;
+  const TopoDS_Vertex aVertex = myMakeChFi2d.RemoveChamfer(anOld);
+  moveCorner(anOld, TopoDS_Edge());
   return aVertex;
 }
 
