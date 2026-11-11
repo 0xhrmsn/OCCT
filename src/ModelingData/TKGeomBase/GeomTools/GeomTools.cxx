@@ -36,9 +36,6 @@
 #include <locale>
 #include <memory>
 
-#include <cstdint>
-#include <limits>
-
 static occ::handle<GeomTools_UndefinedTypeHandler> theActiveHandler =
   new GeomTools_UndefinedTypeHandler;
 
@@ -102,41 +99,6 @@ void GeomTools::SetUndefinedTypeHandler(const occ::handle<GeomTools_UndefinedTyp
 occ::handle<GeomTools_UndefinedTypeHandler> GeomTools::GetUndefinedTypeHandler()
 {
   return theActiveHandler;
-}
-
-//=================================================================================================
-
-bool GeomTools::IsAvailable(Standard_IStream& IS, const int theNbItems, const size_t theMinItemSize)
-{
-  if (theNbItems < 0 || IS.fail())
-  {
-    return false;
-  }
-  if (theMinItemSize != 0
-      && static_cast<uint64_t>(theNbItems) > std::numeric_limits<uint64_t>::max() / theMinItemSize)
-  {
-    return false;
-  }
-  // a small array is bounded by the characters that are really read; do not pay for the seek
-  const uint64_t aNbBytes = static_cast<uint64_t>(theNbItems) * theMinItemSize;
-  if (aNbBytes <= (uint64_t(1) << 20))
-  {
-    return true;
-  }
-  const std::streampos aPos = IS.tellg();
-  if (aPos == std::streampos(-1))
-  {
-    return true; // the size of the stream is not known
-  }
-  IS.seekg(0, std::ios::end);
-  const std::streampos anEnd = IS.tellg();
-  IS.clear();
-  IS.seekg(aPos);
-  if (anEnd == std::streampos(-1) || anEnd < aPos)
-  {
-    return true;
-  }
-  return aNbBytes <= static_cast<uint64_t>(anEnd - aPos);
 }
 
 //=================================================================================================

@@ -43,6 +43,13 @@
 #include <NCollection_Array1.hxx>
 #include <Standard_Integer.hxx>
 
+#include <algorithm>
+
+//! Number of items allocated for a count read from a text stream before the stream shows that it
+//! really holds them: the arrays then grow by doubling while the stream is good, so a damaged or
+//! crafted count does not allocate more than about twice the data really read.
+static constexpr int THE_TEXT_FIRST_CHUNK = 65536;
+
 namespace
 {
 //! Trimmed and offset geometries are read with their basis geometry. OCCT writes a few levels;
@@ -832,17 +839,26 @@ static Standard_IStream& operator>>(Standard_IStream& IS, occ::handle<Geom2d_BSp
   // poles and weights
   int i = 0, degree = 0, nbpoles = 0, nbknots = 0;
   IS >> degree >> nbpoles >> nbknots;
-  // the counts come from the stream: each pole takes at least 2 numbers, each knot 2
-  if (!GeomTools::IsAvailable(IS, nbpoles, 4) || !GeomTools::IsAvailable(IS, nbknots, 4))
+  if (nbpoles < 0 || nbknots < 0)
   {
-    throw Standard_Failure("GeomTools_Curve2dSet: B-spline curve: larger than the stream");
+    throw Standard_Failure("GeomTools_Curve2dSet: B-spline curve: negative count");
   }
 
-  NCollection_Array1<gp_Pnt2d> poles(1, nbpoles);
-  NCollection_Array1<double>   weights(1, nbpoles);
+  NCollection_Array1<gp_Pnt2d> poles(1, std::min(nbpoles, THE_TEXT_FIRST_CHUNK));
+  NCollection_Array1<double>   weights(1, poles.Upper());
 
   for (i = 1; i <= nbpoles; i++)
   {
+    if (i > poles.Upper())
+    {
+      if (!IS.good())
+      {
+        throw Standard_Failure("GeomTools_Curve2dSet: B-spline curve: larger than the stream");
+      }
+      const int aNb = nbpoles / 2 < poles.Upper() ? nbpoles : 2 * poles.Upper();
+      poles.Resize(1, aNb, true);
+      weights.Resize(1, aNb, true);
+    }
     IS >> poles(i);
     if (rational)
     {
@@ -854,11 +870,21 @@ static Standard_IStream& operator>>(Standard_IStream& IS, occ::handle<Geom2d_BSp
     }
   }
 
-  NCollection_Array1<double> knots(1, nbknots);
-  NCollection_Array1<int>    mults(1, nbknots);
+  NCollection_Array1<double> knots(1, std::min(nbknots, THE_TEXT_FIRST_CHUNK));
+  NCollection_Array1<int>    mults(1, knots.Upper());
 
   for (i = 1; i <= nbknots; i++)
   {
+    if (i > knots.Upper())
+    {
+      if (!IS.good())
+      {
+        throw Standard_Failure("GeomTools_Curve2dSet: B-spline curve: larger than the stream");
+      }
+      const int aNb = nbknots / 2 < knots.Upper() ? nbknots : 2 * knots.Upper();
+      knots.Resize(1, aNb, true);
+      mults.Resize(1, aNb, true);
+    }
     GeomTools::GetReal(IS, knots(i));
     IS >> mults(i);
     if (IS.fail())

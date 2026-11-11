@@ -39,6 +39,13 @@
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <Geom_BSplineCurve.hxx>
+#include <Geom_BSplineSurface.hxx>
+#include <NCollection_Array2.hxx>
+#include <Poly_Triangle.hxx>
+#include <TopoDS_Compound.hxx>
+#include <TopoDS_Edge.hxx>
+#include <gp_Pln.hxx>
+#include <gp_Pnt2d.hxx>
 #include <Geom_CylindricalSurface.hxx>
 #include <gp_Ax3.hxx>
 
@@ -47,9 +54,12 @@
 #include <Standard_Failure.hxx>
 
 #include <atomic>
+#include <chrono>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <sstream>
 #include <string>
 
@@ -525,7 +535,8 @@ bool replaceOnce(std::string& theData, const std::string& theOld, const std::str
 } // namespace
 
 // The counts of a text BREP sized the arrays without a limit: a few bytes asked for gigabytes.
-// They are now limited by the rest of the stream, as in binary BREP.
+// The arrays now grow only while the stream holds their data (see
+// Read_LargeValidText_FileAndStreams).
 TEST(BRepTools_Test, Read_CountsLargerThanStream_Text)
 {
   // triangulation
@@ -576,5 +587,234 @@ TEST(BRepTools_Test, Read_CountsLargerThanStream_Text)
     std::ostringstream anOut;
     BRepTools::Write(aBox, anOut);
     EXPECT_TRUE(textReadFailure(anOut.str()).empty());
+  }
+}
+
+// The limit of the text counts above sought the end of the stream and back. A file stream opened
+// in text mode on Windows does not return to a position read by tellg when the lines end with LF
+// only, as BRepTools::Write writes them: a valid file with a large triangulation, B-spline curve
+// or surface then failed to read ("Not a TShape table"). The arrays now grow while the stream holds
+// the data, without seeking; a valid file is read the same by path, by a text or binary file
+// stream and by a string stream.
+TEST(BRepTools_Test, Read_LargeValidText_FileAndStreams)
+{
+  // a planar face carrying a 300 x 300 grid triangulation: more nodes and triangles than the first
+  // allocation of the reader
+  constexpr int     aNbGrid = 300;
+  const TopoDS_Face aPlane  = BRepBuilderAPI_MakeFace(gp_Pln(gp::XOY()), 0.0, 1.0, 0.0, 1.0);
+  occ::handle<Poly_Triangulation> aGrid =
+    new Poly_Triangulation(aNbGrid * aNbGrid, 2 * (aNbGrid - 1) * (aNbGrid - 1), true);
+  for (int i = 0; i < aNbGrid; ++i)
+  {
+    for (int j = 0; j < aNbGrid; ++j)
+    {
+      const double aU = i / double(aNbGrid - 1), aV = j / double(aNbGrid - 1);
+      aGrid->SetNode(i * aNbGrid + j + 1, gp_Pnt(aU, aV, 0.0));
+      aGrid->SetUVNode(i * aNbGrid + j + 1, gp_Pnt2d(aU, aV));
+    }
+  }
+  int aTri = 1;
+  for (int i = 0; i + 1 < aNbGrid; ++i)
+  {
+    for (int j = 0; j + 1 < aNbGrid; ++j)
+    {
+      const int aN = i * aNbGrid + j + 1;
+      aGrid->SetTriangle(aTri++, Poly_Triangle(aN, aN + aNbGrid, aN + 1));
+      aGrid->SetTriangle(aTri++, Poly_Triangle(aN + 1, aN + aNbGrid, aN + aNbGrid + 1));
+    }
+  }
+  BRep_Builder().UpdateFace(aPlane, aGrid);
+
+  // a B-spline curve of degree 1 with 70000 poles and a B-spline surface with 300 x 300 poles
+  constexpr int              aNbCurve = 70000;
+  NCollection_Array1<gp_Pnt> aCurvePoles(1, aNbCurve);
+  NCollection_Array1<double> aCurveKnots(1, aNbCurve);
+  NCollection_Array1<int>    aCurveMults(1, aNbCurve);
+  for (int i = 1; i <= aNbCurve; ++i)
+  {
+    aCurvePoles(i) = gp_Pnt(i, (i % 7) * 0.5, 0.0);
+    aCurveKnots(i) = i;
+    aCurveMults(i) = (i == 1 || i == aNbCurve) ? 2 : 1;
+  }
+  const TopoDS_Edge anEdge = BRepBuilderAPI_MakeEdge(
+    occ::handle<Geom_Curve>(new Geom_BSplineCurve(aCurvePoles, aCurveKnots, aCurveMults, 1)));
+  NCollection_Array2<gp_Pnt> aSurfPoles(1, aNbGrid, 1, aNbGrid);
+  NCollection_Array1<double> aSurfKnots(1, aNbGrid);
+  NCollection_Array1<int>    aSurfMults(1, aNbGrid);
+  for (int i = 1; i <= aNbGrid; ++i)
+  {
+    aSurfKnots(i) = i;
+    aSurfMults(i) = (i == 1 || i == aNbGrid) ? 2 : 1;
+    for (int j = 1; j <= aNbGrid; ++j)
+    {
+      aSurfPoles(i, j) = gp_Pnt(i, j, ((i * j) % 5) * 0.25);
+    }
+  }
+  occ::handle<Geom_BSplineSurface> aSurf =
+    new Geom_BSplineSurface(aSurfPoles, aSurfKnots, aSurfKnots, aSurfMults, aSurfMults, 1, 1);
+  const TopoDS_Face aSurfFace = BRepBuilderAPI_MakeFace(aSurf, 1.0e-7);
+
+  TopoDS_Compound aCompound;
+  BRep_Builder().MakeCompound(aCompound);
+  BRep_Builder().Add(aCompound, aPlane);
+  BRep_Builder().Add(aCompound, anEdge);
+  BRep_Builder().Add(aCompound, aSurfFace);
+
+  // distinct for each call: the tests may run in parallel
+  static std::atomic<int>     aCounter(0);
+  const std::filesystem::path aPath =
+    std::filesystem::temp_directory_path()
+    / ("occt_brep_large_valid_text_"
+       + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + "_"
+       + std::to_string(++aCounter) + ".brep");
+  ASSERT_TRUE(BRepTools::Write(aCompound, aPath.string().c_str()));
+
+  // what is read is compared with what is written: counts, coordinates and parameters
+  const auto checkRead = [&](const TopoDS_Shape& theRead, const char* theWay) {
+    ASSERT_FALSE(theRead.IsNull()) << theWay;
+    int aNbFaces = 0, aNbEdges = 0;
+    for (TopExp_Explorer anExp(theRead, TopAbs_FACE); anExp.More(); anExp.Next())
+    {
+      const TopoDS_Face&              aFace = TopoDS::Face(anExp.Current());
+      TopLoc_Location                 aLoc;
+      occ::handle<Poly_Triangulation> aReadTri = BRep_Tool::Triangulation(aFace, aLoc);
+      if (!aReadTri.IsNull() && aReadTri->NbNodes() == aGrid->NbNodes())
+      {
+        ++aNbFaces;
+        ASSERT_EQ(aReadTri->NbTriangles(), aGrid->NbTriangles()) << theWay;
+        ASSERT_TRUE(aReadTri->HasUVNodes()) << theWay;
+        for (int i = 1; i <= aGrid->NbNodes(); i += 997)
+        {
+          EXPECT_EQ(aReadTri->Node(i).Distance(aGrid->Node(i)), 0.0) << theWay << " node " << i;
+          EXPECT_EQ(aReadTri->UVNode(i).Distance(aGrid->UVNode(i)), 0.0) << theWay;
+        }
+        int aN1 = 0, aN2 = 0, aN3 = 0, anM1 = 0, anM2 = 0, anM3 = 0;
+        aReadTri->Triangle(aGrid->NbTriangles()).Get(aN1, aN2, aN3);
+        aGrid->Triangle(aGrid->NbTriangles()).Get(anM1, anM2, anM3);
+        EXPECT_TRUE(aN1 == anM1 && aN2 == anM2 && aN3 == anM3) << theWay;
+      }
+      else
+      {
+        occ::handle<Geom_BSplineSurface> aReadSurf =
+          occ::down_cast<Geom_BSplineSurface>(BRep_Tool::Surface(aFace));
+        ASSERT_FALSE(aReadSurf.IsNull()) << theWay;
+        ++aNbFaces;
+        ASSERT_EQ(aReadSurf->NbUPoles(), aNbGrid) << theWay;
+        ASSERT_EQ(aReadSurf->NbVPoles(), aNbGrid) << theWay;
+        EXPECT_EQ(aReadSurf->Pole(123, 289).Distance(aSurfPoles(123, 289)), 0.0) << theWay;
+        EXPECT_EQ(aReadSurf->Pole(aNbGrid, aNbGrid).Distance(aSurfPoles(aNbGrid, aNbGrid)), 0.0)
+          << theWay;
+        EXPECT_EQ(aReadSurf->VKnot(aNbGrid), double(aNbGrid)) << theWay;
+      }
+    }
+    for (TopExp_Explorer anExp(theRead, TopAbs_EDGE, TopAbs_FACE); anExp.More(); anExp.Next())
+    {
+      double                         aFirst = 0.0, aLast = 0.0;
+      occ::handle<Geom_BSplineCurve> aReadCurve = occ::down_cast<Geom_BSplineCurve>(
+        BRep_Tool::Curve(TopoDS::Edge(anExp.Current()), aFirst, aLast));
+      ASSERT_FALSE(aReadCurve.IsNull()) << theWay;
+      ++aNbEdges;
+      ASSERT_EQ(aReadCurve->NbPoles(), aNbCurve) << theWay;
+      EXPECT_EQ(aReadCurve->Pole(aNbCurve - 3).Distance(aCurvePoles(aNbCurve - 3)), 0.0) << theWay;
+      EXPECT_EQ(aReadCurve->Knot(aNbCurve), double(aNbCurve)) << theWay;
+    }
+    EXPECT_EQ(aNbFaces, 2) << theWay;
+    EXPECT_EQ(aNbEdges, 1) << theWay;
+  };
+
+  {
+    TopoDS_Shape aRead;
+    EXPECT_TRUE(BRepTools::Read(aRead, aPath.string().c_str(), BRep_Builder()));
+    checkRead(aRead, "path");
+  }
+  {
+    std::ifstream aText(aPath); // text mode, as an application usually opens it
+    TopoDS_Shape  aRead;
+    BRepTools::Read(aRead, aText, BRep_Builder());
+    checkRead(aRead, "text ifstream");
+  }
+  {
+    std::ifstream aBinary(aPath, std::ios::in | std::ios::binary);
+    TopoDS_Shape  aRead;
+    BRepTools::Read(aRead, aBinary, BRep_Builder());
+    checkRead(aRead, "binary ifstream");
+  }
+  {
+    std::ifstream      aFile(aPath, std::ios::in | std::ios::binary);
+    std::ostringstream aCopy;
+    aCopy << aFile.rdbuf();
+    aFile.close();
+    std::istringstream anIn(aCopy.str());
+    TopoDS_Shape       aRead;
+    BRepTools::Read(aRead, anIn, BRep_Builder());
+    checkRead(aRead, "string stream");
+  }
+  std::error_code anError;
+  std::filesystem::remove(aPath, anError);
+}
+
+// A count larger than the data that follows it stops at the end of the stream with a failure, for
+// each array of a B-spline surface grown by the text reader; a negative count is refused.
+TEST(BRepTools_Test, Read_CountsLargerThanStream_Text_SurfaceArrays)
+{
+  NCollection_Array2<gp_Pnt> aPoles(1, 3, 1, 3);
+  for (int i = 1; i <= 3; ++i)
+  {
+    for (int j = 1; j <= 3; ++j)
+    {
+      aPoles(i, j) = gp_Pnt(i, j, (i + j) % 2);
+    }
+  }
+  NCollection_Array1<double> aKnots(1, 2);
+  NCollection_Array1<int>    aMults(1, 2);
+  aKnots(1) = 0.0;
+  aKnots(2) = 1.0;
+  aMults(1) = aMults(2)   = 3;
+  const TopoDS_Face aFace = BRepBuilderAPI_MakeFace(
+    occ::handle<Geom_Surface>(
+      new Geom_BSplineSurface(aPoles, aKnots, aKnots, aMults, aMults, 2, 2)),
+    1.0e-7);
+  std::ostringstream anOut;
+  BRepTools::Write(aFace, anOut);
+  const std::string anIntact = anOut.str();
+  // type 9, not rational, not periodic, degrees 2 2, then the counts of poles and knots
+  const std::string anOld = "\n9 0 0 0 0 2 2 3 3 2 2";
+  for (const char* aCounts : {"\n9 0 0 0 0 2 2 3 2000000 2 2",
+                              "\n9 0 0 0 0 2 2 2000000 3 2 2",
+                              "\n9 0 0 0 0 2 2 3 3 20000000 2",
+                              "\n9 0 0 0 0 2 2 3 3 2 20000000",
+                              "\n9 0 0 0 0 2 2 70000 70000 2 2",
+                              "\n9 0 0 0 0 2 2 -3 3 2 2"})
+  {
+    std::string aData = anIntact;
+    ASSERT_TRUE(replaceOnce(aData, anOld, aCounts)) << anIntact.substr(0, 600);
+    const std::string aMessage = textReadFailure(aData);
+    // the failure of the B-spline surface is reported by GeomTools_SurfaceSet::Read
+    EXPECT_NE(aMessage.find("surface is not read"), std::string::npos)
+      << aCounts << ": " << aMessage;
+  }
+  EXPECT_TRUE(textReadFailure(anIntact).empty());
+}
+
+// The number of triangulations or polygons is read before them: once the stream ends, each
+// further item reused the counts of the previous one, so a file of a few bytes made millions of
+// triangulations of 65536 nodes. The end of the stream stops the reading.
+TEST(BRepTools_Test, Read_ItemCountBeyondEndOfStream_Text)
+{
+  const TopoDS_Shape aBox = BRepPrimAPI_MakeBox(10.0, 20.0, 30.0).Shape();
+  BRepMesh_IncrementalMesh(aBox, 0.5);
+  std::ostringstream anOut;
+  BRepTools::Write(aBox, anOut);
+  const std::string                         anIntact    = anOut.str();
+  const std::pair<const char*, const char*> aSections[] = {
+    {"\nTriangulations ", "\nTriangulations 2000000000\n65536 65536 0 0\n"},
+    {"\nPolygon3D ", "\nPolygon3D 2000000000\n65536 1\n"},
+    {"\nPolygonOnTriangulations ", "\nPolygonOnTriangulations 2000000000\n65536\n"}};
+  for (const auto& aSection : aSections)
+  {
+    const size_t aPos = anIntact.find(aSection.first);
+    ASSERT_NE(aPos, std::string::npos) << aSection.first;
+    const std::string aMessage = textReadFailure(anIntact.substr(0, aPos) + aSection.second);
+    EXPECT_FALSE(aMessage.empty()) << aSection.second;
   }
 }

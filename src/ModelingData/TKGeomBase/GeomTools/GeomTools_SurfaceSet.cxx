@@ -46,6 +46,14 @@
 #include <Standard_Integer.hxx>
 #include <NCollection_Array1.hxx>
 
+#include <algorithm>
+#include <limits>
+
+//! Number of items allocated for a count read from a text stream before the stream shows that it
+//! really holds them: the arrays then grow by doubling while the stream is good, so a damaged or
+//! crafted count does not allocate more than about twice the data really read.
+static constexpr int THE_TEXT_FIRST_CHUNK = 65536;
+
 namespace
 {
 //! Trimmed and offset geometries are read with their basis geometry. OCCT writes a few levels;
@@ -1083,25 +1091,48 @@ static Standard_IStream& operator>>(Standard_IStream& IS, occ::handle<Geom_BSpli
   IS >> udegree >> vdegree;
   IS >> nbupoles >> nbvpoles;
   IS >> nbuknots >> nbvknots;
-  // the counts come from the stream: each pole takes at least 3 numbers, each knot 2
-  if (nbvpoles < 0 || !GeomTools::IsAvailable(IS, nbupoles, static_cast<size_t>(nbvpoles) * 6)
-      || !GeomTools::IsAvailable(IS, nbuknots, 4) || !GeomTools::IsAvailable(IS, nbvknots, 4))
+  // a BSpline surface has at least 2 poles in each direction
+  if (nbupoles < 2 || nbvpoles < 2 || nbuknots < 0 || nbvknots < 0
+      || nbupoles > std::numeric_limits<int>::max() / nbvpoles)
   {
-    throw Standard_Failure("GeomTools_SurfaceSet: B-spline surface: larger than the stream");
+    throw Standard_Failure("GeomTools_SurfaceSet: B-spline surface: invalid count");
+  }
+
+  // the counts come from the stream: the poles are read row by row into arrays that grow only
+  // while the stream holds them
+  const int                  aNbPoles = nbupoles * nbvpoles;
+  NCollection_Array1<gp_Pnt> aPoles(1, std::min(aNbPoles, THE_TEXT_FIRST_CHUNK));
+  NCollection_Array1<double> aWeights(1, aPoles.Upper());
+  int                        i, j;
+  for (i = 1; i <= aNbPoles; i++)
+  {
+    if (i > aPoles.Upper())
+    {
+      if (!IS.good())
+      {
+        throw Standard_Failure("GeomTools_SurfaceSet: B-spline surface: larger than the stream");
+      }
+      const int aNb = aNbPoles / 2 < aPoles.Upper() ? aNbPoles : 2 * aPoles.Upper();
+      aPoles.Resize(1, aNb, true);
+      aWeights.Resize(1, aNb, true);
+    }
+    IS >> aPoles(i);
+    if (urational || vrational)
+    {
+      GeomTools::GetReal(IS, aWeights(i));
+    }
   }
 
   NCollection_Array2<gp_Pnt> poles(1, nbupoles, 1, nbvpoles);
   NCollection_Array2<double> weights(1, nbupoles, 1, nbvpoles);
-
-  int i, j;
   for (i = 1; i <= nbupoles; i++)
   {
     for (j = 1; j <= nbvpoles; j++)
     {
-      IS >> poles(i, j);
+      poles(i, j) = aPoles((i - 1) * nbvpoles + j);
       if (urational || vrational)
       {
-        GeomTools::GetReal(IS, weights(i, j));
+        weights(i, j) = aWeights((i - 1) * nbvpoles + j);
       }
       if (IS.fail())
       {
@@ -1110,10 +1141,20 @@ static Standard_IStream& operator>>(Standard_IStream& IS, occ::handle<Geom_BSpli
     }
   }
 
-  NCollection_Array1<double> uknots(1, nbuknots);
-  NCollection_Array1<int>    umults(1, nbuknots);
+  NCollection_Array1<double> uknots(1, std::min(nbuknots, THE_TEXT_FIRST_CHUNK));
+  NCollection_Array1<int>    umults(1, uknots.Upper());
   for (i = 1; i <= nbuknots; i++)
   {
+    if (i > uknots.Upper())
+    {
+      if (!IS.good())
+      {
+        throw Standard_Failure("GeomTools_SurfaceSet: B-spline surface: larger than the stream");
+      }
+      const int aNb = nbuknots / 2 < uknots.Upper() ? nbuknots : 2 * uknots.Upper();
+      uknots.Resize(1, aNb, true);
+      umults.Resize(1, aNb, true);
+    }
     GeomTools::GetReal(IS, uknots(i));
     IS >> umults(i);
     if (IS.fail())
@@ -1122,10 +1163,20 @@ static Standard_IStream& operator>>(Standard_IStream& IS, occ::handle<Geom_BSpli
     }
   }
 
-  NCollection_Array1<double> vknots(1, nbvknots);
-  NCollection_Array1<int>    vmults(1, nbvknots);
+  NCollection_Array1<double> vknots(1, std::min(nbvknots, THE_TEXT_FIRST_CHUNK));
+  NCollection_Array1<int>    vmults(1, vknots.Upper());
   for (i = 1; i <= nbvknots; i++)
   {
+    if (i > vknots.Upper())
+    {
+      if (!IS.good())
+      {
+        throw Standard_Failure("GeomTools_SurfaceSet: B-spline surface: larger than the stream");
+      }
+      const int aNb = nbvknots / 2 < vknots.Upper() ? nbvknots : 2 * vknots.Upper();
+      vknots.Resize(1, aNb, true);
+      vmults.Resize(1, aNb, true);
+    }
     GeomTools::GetReal(IS, vknots(i));
     IS >> vmults(i);
     if (IS.fail())

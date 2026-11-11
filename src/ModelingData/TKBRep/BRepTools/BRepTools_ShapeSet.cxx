@@ -49,6 +49,13 @@
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Vertex.hxx>
 
+#include <algorithm>
+
+//! Number of items allocated for a count read from a text stream before the stream shows that it
+//! really holds them: the arrays then grow by doubling while the stream is good, so a damaged or
+//! crafted count does not allocate more than about twice the data really read.
+static constexpr int THE_TEXT_FIRST_CHUNK = 65536;
+
 // Modified:    02 Nov 2000: BUC60769. JMB, PTV.  In order to be able to read BRep
 //              files that came from a platform different from where CasCade
 //              is run, we need the following modifications.
@@ -1417,15 +1424,23 @@ void BRepTools_ShapeSet::ReadPolygonOnTriangulation(Standard_IStream&           
   for (i = 1; i <= nbpol && aPS.More(); i++, aPS.Next())
   {
     IS >> nbnodes;
-    // the count comes from the stream: each node index takes at least 2 characters
-    if (!GeomTools::IsAvailable(IS, nbnodes, 2))
+    // a count not read (end of the stream) would repeat the previous one for each of nbpol items
+    if (nbnodes < 0 || IS.fail())
     {
-      throw Standard_Failure(
-        "BRepTools_ShapeSet: polygon on triangulation: larger than the stream");
+      throw Standard_Failure("BRepTools_ShapeSet: polygon on triangulation: invalid count");
     }
-    NCollection_Array1<int> Nodes(1, nbnodes);
+    NCollection_Array1<int> Nodes(1, std::min(nbnodes, THE_TEXT_FIRST_CHUNK));
     for (j = 1; j <= nbnodes; j++)
     {
+      if (j > Nodes.Upper())
+      {
+        if (!IS.good())
+        {
+          throw Standard_Failure(
+            "BRepTools_ShapeSet: polygon on triangulation: larger than the stream");
+        }
+        Nodes.Resize(1, nbnodes / 2 < Nodes.Upper() ? nbnodes : 2 * Nodes.Upper(), true);
+      }
       IS >> val;
       Nodes(j) = val;
     }
@@ -1462,6 +1477,10 @@ void BRepTools_ShapeSet::ReadPolygonOnTriangulation(Standard_IStream&           
     //      IS.seekg(ppp);
     //      Poly = new Poly_PolygonOnTriangulation(Nodes);
     //      }
+    if (IS.fail())
+    {
+      throw Standard_Failure("BRepTools_ShapeSet: polygon on triangulation: truncated");
+    }
     myNodes.Add(Poly);
   }
   //  }
@@ -1597,12 +1616,12 @@ void BRepTools_ShapeSet::ReadPolygon3D(Standard_IStream&            IS,
   {
     IS >> nbnodes;
     IS >> hasparameters;
-    // the count comes from the stream: each node takes at least 3 numbers
-    if (!GeomTools::IsAvailable(IS, nbnodes, 6))
+    // a count not read (end of the stream) would repeat the previous one for each of nbpol items
+    if (nbnodes < 0 || IS.fail())
     {
-      throw Standard_Failure("BRepTools_ShapeSet: 3D polygon: larger than the stream");
+      throw Standard_Failure("BRepTools_ShapeSet: 3D polygon: invalid count");
     }
-    NCollection_Array1<gp_Pnt> Nodes(1, nbnodes);
+    NCollection_Array1<gp_Pnt> Nodes(1, std::min(nbnodes, THE_TEXT_FIRST_CHUNK));
     GeomTools::GetReal(IS, d);
     if (IS.fail())
     {
@@ -1610,6 +1629,14 @@ void BRepTools_ShapeSet::ReadPolygon3D(Standard_IStream&            IS,
     }
     for (j = 1; j <= nbnodes; j++)
     {
+      if (j > Nodes.Upper())
+      {
+        if (!IS.good())
+        {
+          throw Standard_Failure("BRepTools_ShapeSet: 3D polygon: larger than the stream");
+        }
+        Nodes.Resize(1, nbnodes / 2 < Nodes.Upper() ? nbnodes : 2 * Nodes.Upper(), true);
+      }
       GeomTools::GetReal(IS, x);
       GeomTools::GetReal(IS, y);
       GeomTools::GetReal(IS, z);
@@ -1637,6 +1664,10 @@ void BRepTools_ShapeSet::ReadPolygon3D(Standard_IStream&            IS,
       P = new Poly_Polygon3D(Nodes);
     }
     P->Deflection(d);
+    if (IS.fail())
+    {
+      throw Standard_Failure("BRepTools_ShapeSet: 3D polygon: truncated");
+    }
     myPolygons3D.Add(P);
   }
 }
@@ -1881,16 +1912,27 @@ void BRepTools_ShapeSet::ReadTriangulation(Standard_IStream&            IS,
     {
       return;
     }
-    // the counts come from the stream: each node takes at least 3 numbers, each triangle 3
-    if (!GeomTools::IsAvailable(IS, nbNodes, 6) || !GeomTools::IsAvailable(IS, nbTriangles, 6))
+    // counts not read (end of the stream) would repeat the previous ones for each of nbtri items
+    if (nbNodes < 0 || nbTriangles < 0)
     {
-      throw Standard_Failure("BRepTools_ShapeSet: triangulation: larger than the stream");
+      throw Standard_Failure("BRepTools_ShapeSet: triangulation: invalid count");
     }
 
-    T = new Poly_Triangulation(nbNodes, nbTriangles, hasUV, hasNormals);
+    int aNbNodesAlloc     = std::min(nbNodes, THE_TEXT_FIRST_CHUNK);
+    int aNbTrianglesAlloc = std::min(nbTriangles, THE_TEXT_FIRST_CHUNK);
+    T = new Poly_Triangulation(aNbNodesAlloc, aNbTrianglesAlloc, hasUV, hasNormals);
 
     for (j = 1; j <= nbNodes; j++)
     {
+      if (j > aNbNodesAlloc)
+      {
+        if (!IS.good())
+        {
+          throw Standard_Failure("BRepTools_ShapeSet: triangulation: larger than the stream");
+        }
+        aNbNodesAlloc = nbNodes / 2 < aNbNodesAlloc ? nbNodes : 2 * aNbNodesAlloc;
+        T->ResizeNodes(aNbNodesAlloc, true);
+      }
       GeomTools::GetReal(IS, x);
       GeomTools::GetReal(IS, y);
       GeomTools::GetReal(IS, z);
@@ -1919,6 +1961,16 @@ void BRepTools_ShapeSet::ReadTriangulation(Standard_IStream&            IS,
     int n1, n2, n3;
     for (j = 1; j <= nbTriangles; j++)
     {
+      if (j > aNbTrianglesAlloc)
+      {
+        if (!IS.good())
+        {
+          throw Standard_Failure("BRepTools_ShapeSet: triangulation: larger than the stream");
+        }
+        aNbTrianglesAlloc =
+          nbTriangles / 2 < aNbTrianglesAlloc ? nbTriangles : 2 * aNbTrianglesAlloc;
+        T->ResizeTriangles(aNbTrianglesAlloc, true);
+      }
       IS >> n1 >> n2 >> n3;
       T->SetTriangle(j, Poly_Triangle(n1, n2, n3));
     }
@@ -1940,6 +1992,10 @@ void BRepTools_ShapeSet::ReadTriangulation(Standard_IStream&            IS,
     }
 
     T->Deflection(d);
+    if (IS.fail())
+    {
+      throw Standard_Failure("BRepTools_ShapeSet: triangulation: truncated");
+    }
     myTriangulations.Add(T, hasNormals);
   }
 }
