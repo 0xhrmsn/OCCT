@@ -11,12 +11,18 @@
 // Alternatively, this file may be used under the terms of Open CASCADE
 // commercial license or contractual agreement.
 
+#include <OSD_Directory.hxx>
+#include <OSD_DirectoryIterator.hxx>
+#include <OSD_File.hxx>
+#include <OSD_FileIterator.hxx>
 #include <OSD_Path.hxx>
 #include <OSD_Process.hxx>
 #include <TCollection_AsciiString.hxx>
 
 #include <gtest/gtest.h>
 
+#include <filesystem>
+#include <fstream>
 #include <string>
 
 // Test fixture for OSD_Path tests
@@ -302,5 +308,59 @@ TEST_F(OSD_PathTest, LongWindowsPath)
     EXPECT_NE(aSystemName.Search(std::string(150, 'z').c_str()), -1) << aPrefix;
     EXPECT_NE(aSystemName.Search("model.step"), -1) << aPrefix;
   }
+}
+// SystemName rebuilt "\\?\C:\..." as "//?/C:/...", which Windows normalizes as an ordinary path:
+// a folder longer than MAX_PATH was not found, so that OCAF SaveAs reported "No such directory".
+TEST_F(OSD_PathTest, ExtendedLengthPrefixKeepsBackslashes)
+{
+  TCollection_AsciiString aSystemName;
+  OSD_Path(TCollection_AsciiString("\\\\?\\C:\\a\\b\\model.cbf")).SystemName(aSystemName);
+  EXPECT_STREQ(aSystemName.ToCString(), "\\\\?\\C:\\a\\b\\model.cbf");
+  OSD_Path(TCollection_AsciiString("C:\\a\\b\\model.cbf")).SystemName(aSystemName);
+  EXPECT_STREQ(aSystemName.ToCString(), "C:/a/b/model.cbf");
+
+  const std::filesystem::path aRoot =
+    std::filesystem::temp_directory_path()
+    / ("occt_osd_path_" + std::to_string(OSD_Process().ProcessId()));
+  const std::wstring aPrefix = L"\\\\?\\";
+  const std::filesystem::path aLong =
+    aRoot / std::string(120, 'x') / std::string(120, 'y') / std::string(120, 'z');
+  std::error_code anErr;
+  std::filesystem::create_directories(aPrefix + aLong.wstring(), anErr);
+  EXPECT_FALSE(anErr) << anErr.message();
+  std::ofstream(aPrefix + (aLong / "part.stp").wstring()) << "x";
+  const std::string aLongName = "\\\\?\\" + aLong.string();
+  EXPECT_GT(aLongName.size(), 260u);
+  const OSD_Path aLongPath(TCollection_AsciiString(aLongName.c_str()));
+  EXPECT_TRUE(OSD_Directory(aLongPath).Exists());
+
+  // The search pattern of the iterators was joined with '/', which "\\?\" does not take.
+  int aNbFiles = 0;
+  for (OSD_FileIterator anIter(aLongPath, "*"); anIter.More(); anIter.Next())
+  {
+    ++aNbFiles;
+  }
+  EXPECT_EQ(aNbFiles, 1);
+  int aNbDirs = 0;
+  for (OSD_DirectoryIterator anIter(OSD_Path(TCollection_AsciiString(
+                                      ("\\\\?\\" + (aRoot / std::string(120, 'x')).string()).c_str())),
+                                    "*");
+       anIter.More();
+       anIter.Next())
+  {
+    OSD_Path aDir;
+    anIter.Values().Path(aDir);
+    aNbDirs += aDir.Name() == TCollection_AsciiString(std::string(120, 'y').c_str()) ? 1 : 0;
+  }
+  EXPECT_EQ(aNbDirs, 1);
+
+  // An external STEP part is looked for next to the main file through AbsolutePath, which
+  // rejected a folder with the prefix: the part was then looked for in the working directory.
+  const TCollection_AsciiString anAbs =
+    OSD_Path::AbsolutePath(TCollection_AsciiString((aLongName + "\\").c_str()), "part.stp");
+  EXPECT_STREQ(anAbs.ToCString(), (aLongName + "\\part.stp").c_str());
+  EXPECT_TRUE(OSD_File(OSD_Path(anAbs)).Exists());
+
+  std::filesystem::remove_all(aPrefix + aRoot.wstring(), anErr);
 }
 #endif

@@ -263,7 +263,8 @@ bool OSD_DirectoryIterator ::More()
   if (myHandle == INVALID_HANDLE_VALUE)
   {
 
-    TCollection_AsciiString wc = myPlace + "/" + myMask;
+    // A backslash: with the prefix \\?\ a slash is not taken as a separator.
+    TCollection_AsciiString wc = myPlace + "\\" + myMask;
 
     myData = HeapAlloc(GetProcessHeap(), HEAP_GENERATE_EXCEPTIONS, sizeof(WIN32_FIND_DATAW));
 

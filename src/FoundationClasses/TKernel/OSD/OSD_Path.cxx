@@ -1161,6 +1161,15 @@ void OSD_Path ::SystemName(TCollection_AsciiString& FullName, const OSD_SysType 
 
   fullPath += (myName + myExtension);
 
+  // Windows takes the prefix "\\?\" only with backslashes: "//?/C:/..." is normalized as an
+  // ordinary path, so that a path longer than MAX_PATH was not found. A device path "\\.\" is
+  // given back with backslashes as well.
+  if (fullPath.Length() > 4 && fullPath.Value(1) == '/' && fullPath.Value(2) == '/'
+      && (fullPath.Value(3) == '?' || fullPath.Value(3) == '.') && fullPath.Value(4) == '/')
+  {
+    fullPath.ChangeAll('/', '\\');
+  }
+
   if (fullPath.Length() > 0)
 
     FullName = fullPath;
@@ -1728,19 +1737,29 @@ TCollection_AsciiString OSD_Path::AbsolutePath(const TCollection_AsciiString& aD
                                                const TCollection_AsciiString& aRelFilePath)
 {
   TCollection_AsciiString EmptyString = "";
-  if (aRelFilePath.Search("/") == 1 || aRelFilePath.Search(":") == 2)
+#ifdef _WIN32
+  // UNC and extended-length paths ("\\server\share\...", "\\?\C:\...") are absolute too; the
+  // folder of such a path was rejected, so that an external STEP part was looked for in the
+  // working directory instead of next to the main file.
+  const bool isRelBackslashed = aRelFilePath.Search("\\\\") == 1;
+  const bool isDirBackslashed = aDirPath.Search("\\\\") == 1;
+#else
+  const bool isRelBackslashed = false;
+  const bool isDirBackslashed = false;
+#endif
+  if (aRelFilePath.Search("/") == 1 || aRelFilePath.Search(":") == 2 || isRelBackslashed)
   {
     return aRelFilePath;
   }
   TCollection_AsciiString DirPath = aDirPath, RelFilePath = aRelFilePath;
   int                     i, len;
 
-  if (DirPath.Search("/") != 1 && DirPath.Search(":") != 2)
+  if (DirPath.Search("/") != 1 && DirPath.Search(":") != 2 && !isDirBackslashed)
   {
     return EmptyString;
   }
 
-  if (DirPath.Search(":") == 2)
+  if (DirPath.Search(":") == 2 || isDirBackslashed)
   {
     DirPath.ChangeAll('\\', '/');
   }
@@ -1769,6 +1788,11 @@ TCollection_AsciiString OSD_Path::AbsolutePath(const TCollection_AsciiString& aD
   }
   DirPath += '/';
   DirPath += RelFilePath;
+  if (isDirBackslashed && (DirPath.Search("//?/") == 1 || DirPath.Search("//./") == 1))
+  {
+    // the prefix is taken literally only with backslashes (see SystemName)
+    DirPath.ChangeAll('/', '\\');
+  }
   return DirPath;
 }
 
