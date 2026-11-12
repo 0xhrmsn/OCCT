@@ -293,6 +293,31 @@ TEST(BRepFeat_MakePrismTest, PocketThruAll_HistoryComplete)
     M_PI * 64.0 * 30.0);
 }
 
+// A pocket from a plane face z = 5 (not a face of the base) up to the slanted face removed nothing,
+// yet the feature was done: the result was the base, its slanted face split, with the part of the
+// tool kept as a second solid inside it. It must either remove the material between z = 5 and the
+// slanted face, or report that the base is unchanged.
+TEST(BRepFeat_MakePrismTest, PocketFromOuterFace_NoSilentNoOp)
+{
+  const TopoDS_Shape aBase    = slantedBlock();
+  const TopoDS_Face  aProfile = disk(gp_Pnt(50, 30, 0), 8.0);
+  const TopoDS_Face  aBottom  = faceNearest(aBase, gp_Pnt(50, 30, 0));
+  const TopoDS_Face  aSlanted = faceNearest(aBase, gp_Pnt(50, 30, 30));
+  BRepFeat_MakePrism aPrism(aBase, aProfile, aBottom, gp::DZ(), 0, true);
+  aPrism.Perform(rectangleAt(5.0), aSlanted);
+  if (aPrism.IsDone())
+  {
+    // mean height of the slanted face over the disk is 30
+    EXPECT_NEAR(volumeOf(aBase) - volumeOf(aPrism.Shape()),
+                M_PI * 64.0 * 25.0,
+                1.0e-6 * M_PI * 64.0 * 25.0);
+  }
+  else
+  {
+    EXPECT_EQ(aPrism.CurrentStatusError(), BRepFeat_NoChange);
+  }
+}
+
 // MakePrism and MakeRevol set the status of their failure in a member that hid the one of
 // BRepFeat_Form: CurrentStatusError() reported no error for a feature that was not done.
 TEST(BRepFeat_MakePrismTest, FailureStatusReported)

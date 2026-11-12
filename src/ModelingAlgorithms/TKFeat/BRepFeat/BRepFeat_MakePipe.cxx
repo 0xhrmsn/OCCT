@@ -201,14 +201,14 @@ void BRepFeat_MakePipe::Perform()
       BRepAlgoAPI_Fuse f(mySbase, myGShape);
       myShape = f.Shape();
       UpdateDescendants(f, myShape, false);
-      Done();
+      DoneIfChanged();
     }
     else if (myFuse == 0)
     {
       BRepAlgoAPI_Cut c(mySbase, myGShape);
       myShape = c.Shape();
       UpdateDescendants(c, myShape, false);
-      Done();
+      DoneIfChanged();
     }
     else
     {

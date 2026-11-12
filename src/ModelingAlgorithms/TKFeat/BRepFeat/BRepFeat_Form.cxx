@@ -15,12 +15,14 @@
 // commercial license or contractual agreement.
 
 #include <BRep_Builder.hxx>
+#include <BRep_Tool.hxx>
 #include <BRepAlgo.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepCheck_Analyzer.hxx>
 #include <BRepFeat.hxx>
 #include <BRepFeat_Builder.hxx>
 #include <BRepFeat_Form.hxx>
+#include <BRepGProp.hxx>
 #include <BRepLib.hxx>
 #include <BRepTools_Modifier.hxx>
 #include <BRepTools_TrsfModification.hxx>
@@ -30,6 +32,8 @@
 #include <Geom_CylindricalSurface.hxx>
 #include <Geom_Plane.hxx>
 #include <Geom_RectangularTrimmedSurface.hxx>
+#include <Geom_Surface.hxx>
+#include <GProp_GProps.hxx>
 #include <LocOpe_CSIntersector.hxx>
 #include <LocOpe_FindEdges.hxx>
 #include <LocOpe_Gluer.hxx>
@@ -38,11 +42,14 @@
 #include <gp_Pnt.hxx>
 #include <NCollection_Sequence.hxx>
 #include <TopExp_Explorer.hxx>
+#include <TopLoc_Location.hxx>
 #include <TopoDS.hxx>
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Solid.hxx>
 #include <TopTools_ShapeMapHasher.hxx>
 #include <NCollection_Map.hxx>
+
+#include <cmath>
 
 #ifdef OCCT_DEBUG
 extern bool BRepFeat_GettraceFEAT();
@@ -1232,12 +1239,83 @@ void BRepFeat_Form::GlobalPerform()
         myShape = theBuilder.Shape();
       }
     }
+    if (myJustFeat)
+    {
+      Done();
+    }
+    else
+    {
+      DoneIfChanged();
+      if (!IsDone())
+      {
+        return;
+      }
+    }
     // The descendants of the faces are given through the history of the builder.
     UpdateDescendantsByBuilder(myMap, theBuilder, myShape);
-    Done();
   }
 
   myStatusError = BRepFeat_OK;
+}
+
+//=================================================================================================
+
+void BRepFeat_Form::DoneIfChanged()
+{
+  // A feature that left the basis unchanged was reported as done, e.g. a pocket from a face From
+  // outside the basis: the result was the basis with a face split, or the basis with the part of
+  // the tool kept as a second solid inside it. Two cheap signs select the suspicious results, whose
+  // volume is then compared with the one of the basis:
+  // - every face of the result lies on a surface of the basis (faces of the basis keep their
+  //   surface when split; the faces of a tool get their own);
+  // - the result has more solids than the basis.
+  NCollection_Map<const Standard_Transient*> aBaseSurfaces;
+  for (TopExp_Explorer anExp(mySbase, TopAbs_FACE); anExp.More(); anExp.Next())
+  {
+    TopLoc_Location aLoc;
+    aBaseSurfaces.Add(BRep_Tool::Surface(TopoDS::Face(anExp.Current()), aLoc).get());
+  }
+  bool isSuspicious = false;
+  for (TopExp_Explorer anExp(myShape, TopAbs_FACE); anExp.More(); anExp.Next())
+  {
+    TopLoc_Location aLoc;
+    isSuspicious =
+      aBaseSurfaces.Contains(BRep_Tool::Surface(TopoDS::Face(anExp.Current()), aLoc).get());
+    if (!isSuspicious)
+    {
+      break;
+    }
+  }
+  if (!isSuspicious)
+  {
+    int aNbBase = 0, aNbRes = 0;
+    for (TopExp_Explorer anExp(mySbase, TopAbs_SOLID); anExp.More(); anExp.Next())
+    {
+      ++aNbBase;
+    }
+    for (TopExp_Explorer anExp(myShape, TopAbs_SOLID); anExp.More(); anExp.Next())
+    {
+      ++aNbRes;
+    }
+    isSuspicious = aNbRes > aNbBase && aNbBase > 0;
+  }
+  if (isSuspicious)
+  {
+    // Unchanged volume: the difference is within a shift of the surface of the basis by the
+    // confusion tolerance, so that a small real cut on a large part is still a change.
+    GProp_GProps aBaseVol, aResVol, aBaseArea;
+    BRepGProp::VolumeProperties(mySbase, aBaseVol);
+    BRepGProp::VolumeProperties(myShape, aResVol);
+    BRepGProp::SurfaceProperties(mySbase, aBaseArea);
+    if (std::abs(aResVol.Mass() - aBaseVol.Mass()) <= Precision::Confusion() * aBaseArea.Mass())
+    {
+      myStatusError = BRepFeat_NoChange;
+      NotDone();
+      return;
+    }
+  }
+  myStatusError = BRepFeat_OK;
+  Done();
 }
 
 //=================================================================================================

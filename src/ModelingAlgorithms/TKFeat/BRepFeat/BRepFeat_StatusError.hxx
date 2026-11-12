@@ -47,7 +47,8 @@ enum BRepFeat_StatusError
   BRepFeat_NotYetImplemented,
   BRepFeat_NullRealTool,
   BRepFeat_NullToolF,
-  BRepFeat_NullToolU
+  BRepFeat_NullToolU,
+  BRepFeat_NoChange //!< the feature left the basis shape unchanged
 };
 
 #endif // _BRepFeat_StatusError_HeaderFile

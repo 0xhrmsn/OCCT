@@ -804,6 +804,9 @@ Standard_OStream& BRepFeat::Print(const BRepFeat_StatusError se, Standard_OStrea
     case BRepFeat_NullToolU:
       s << "Null Tool : Invalid type for shape Until";
       break;
+    case BRepFeat_NoChange:
+      s << "The feature does not change the basis shape";
+      break;
   }
   return s;
 }

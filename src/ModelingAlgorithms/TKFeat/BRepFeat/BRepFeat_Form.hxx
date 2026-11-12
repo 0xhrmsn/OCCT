@@ -140,6 +140,11 @@ protected:
   //! General perform method...
   Standard_EXPORT void GlobalPerform();
 
+  //! Marks the feature as done, unless its result has the volume of the basis shape while all
+  //! its faces lie on surfaces of the basis or it has more solids than the basis: then the
+  //! feature is not done, with the status BRepFeat_NoChange.
+  Standard_EXPORT void DoneIfChanged();
+
   Standard_EXPORT void UpdateDescendants(const LocOpe_Gluer& G);
 
   Standard_EXPORT void UpdateDescendants(const BRepAlgoAPI_BooleanOperation& aBOP,

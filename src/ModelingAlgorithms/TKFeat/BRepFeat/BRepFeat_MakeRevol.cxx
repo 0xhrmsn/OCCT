@@ -312,14 +312,14 @@ void BRepFeat_MakeRevol::Perform(const double Angle)
       BRepAlgoAPI_Fuse f(mySbase, myGShape);
       myShape = f.Shape();
       UpdateDescendants(f, myShape, false);
-      Done();
+      DoneIfChanged();
     }
     else if (myFuse == 0)
     {
       BRepAlgoAPI_Cut c(mySbase, myGShape);
       myShape = c.Shape();
       UpdateDescendants(c, myShape, false);
-      Done();
+      DoneIfChanged();
     }
     else
     {
@@ -450,14 +450,14 @@ void BRepFeat_MakeRevol::Perform(const TopoDS_Shape& Until)
         BRepAlgoAPI_Fuse f(mySbase, VraiRevol);
         myShape = f.Shape();
         UpdateDescendants(f, myShape, false);
-        Done();
+        DoneIfChanged();
       }
       else if (myFuse == 0)
       {
         BRepAlgoAPI_Cut c(mySbase, VraiRevol);
         myShape = c.Shape();
         UpdateDescendants(c, myShape, false);
-        Done();
+        DoneIfChanged();
       }
       else
       {
@@ -630,14 +630,14 @@ void BRepFeat_MakeRevol::Perform(const TopoDS_Shape& From, const TopoDS_Shape& U
       BRepAlgoAPI_Fuse f(mySbase, VraiRevol);
       myShape = f.Shape();
       UpdateDescendants(f, myShape, false);
-      Done();
+      DoneIfChanged();
     }
     else if (myFuse == 0 && !myJustFeat)
     {
       BRepAlgoAPI_Cut c(mySbase, VraiRevol);
       myShape = c.Shape();
       UpdateDescendants(c, myShape, false);
-      Done();
+      DoneIfChanged();
     }
     else
     {
@@ -773,14 +773,14 @@ void BRepFeat_MakeRevol::PerformUntilAngle(const TopoDS_Shape& Until, const doub
         BRepAlgoAPI_Fuse f(mySbase, VraiRevol);
         myShape = f.Shape();
         UpdateDescendants(f, myShape, false);
-        Done();
+        DoneIfChanged();
       }
       else if (myFuse == 0)
       {
         BRepAlgoAPI_Cut c(mySbase, VraiRevol);
         myShape = c.Shape();
         UpdateDescendants(c, myShape, false);
-        Done();
+        DoneIfChanged();
       }
       else
       {

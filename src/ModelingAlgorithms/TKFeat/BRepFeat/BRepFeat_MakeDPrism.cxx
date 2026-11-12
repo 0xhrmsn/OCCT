@@ -267,14 +267,14 @@ void BRepFeat_MakeDPrism::Perform(const double Height)
       BRepAlgoAPI_Fuse f(mySbase, myGShape);
       myShape = f.Shape();
       UpdateDescendants(f, myShape, false);
-      Done();
+      DoneIfChanged();
     }
     else if (myFuse == 0)
     {
       BRepAlgoAPI_Cut c(mySbase, myGShape);
       myShape = c.Shape();
       UpdateDescendants(c, myShape, false);
-      Done();
+      DoneIfChanged();
     }
     else
     {
@@ -398,14 +398,14 @@ void BRepFeat_MakeDPrism::Perform(const TopoDS_Shape& Until)
         BRepAlgoAPI_Fuse f(mySbase, Cutsh);
         myShape = f.Shape();
         UpdateDescendants(f, myShape, false);
-        Done();
+        DoneIfChanged();
       }
       else if (myFuse == 0)
       {
         BRepAlgoAPI_Cut c(mySbase, Cutsh);
         myShape = c.Shape();
         UpdateDescendants(c, myShape, false);
-        Done();
+        DoneIfChanged();
       }
       else
       {
@@ -620,7 +620,7 @@ void BRepFeat_MakeDPrism::Perform(const TopoDS_Shape& From, const TopoDS_Shape& 
       BRepAlgoAPI_Fuse f(mySbase, trP.Shape());
       myShape = f.Shape();
       UpdateDescendants(f, myShape, false);
-      Done();
+      DoneIfChanged();
     }
     //
     else if (myFuse == 0)
@@ -628,7 +628,7 @@ void BRepFeat_MakeDPrism::Perform(const TopoDS_Shape& From, const TopoDS_Shape& 
       BRepAlgoAPI_Cut c(mySbase, trP.Shape());
       myShape = c.Shape();
       UpdateDescendants(c, myShape, false);
-      Done();
+      DoneIfChanged();
     }
     else
     {
@@ -832,14 +832,14 @@ void BRepFeat_MakeDPrism::PerformFromEnd(const TopoDS_Shape& Until)
       BRepAlgoAPI_Fuse f(mySbase, trP.Shape());
       myShape = f.Shape();
       UpdateDescendants(f, myShape, false);
-      Done();
+      DoneIfChanged();
     }
     else if (myFuse == 0)
     {
       BRepAlgoAPI_Cut c(mySbase, trP.Shape());
       myShape = c.Shape();
       UpdateDescendants(c, myShape, false);
-      Done();
+      DoneIfChanged();
     }
     else
     {
@@ -899,7 +899,7 @@ void BRepFeat_MakeDPrism::PerformThruAll()
     {
       myShape = c.Shape();
       UpdateDescendants(c, myShape, false);
-      Done();
+      DoneIfChanged();
     }
     else
     {
@@ -1025,14 +1025,14 @@ void BRepFeat_MakeDPrism::PerformUntilHeight(const TopoDS_Shape& Until, const do
         BRepAlgoAPI_Fuse f(mySbase, trP.Shape());
         myShape = f.Shape();
         UpdateDescendants(f, myShape, false);
-        Done();
+        DoneIfChanged();
       }
       else if (myFuse == 0)
       {
         BRepAlgoAPI_Cut c(mySbase, trP.Shape());
         myShape = c.Shape();
         UpdateDescendants(c, myShape, false);
-        Done();
+        DoneIfChanged();
       }
       else
       {
