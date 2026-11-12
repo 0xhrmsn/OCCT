@@ -15,14 +15,18 @@
 
 #include <BRepAlgoAPI_Fuse.hxx>
 #include <BRepBuilderAPI_MakeEdge.hxx>
+#include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
 #include <BRepBuilderAPI_MakeWire.hxx>
+#include <BRepBuilderAPI_Transform.hxx>
+#include <BRepCheck_Analyzer.hxx>
 #include <BRepGProp.hxx>
 #include <BRepOffsetAPI_ThruSections.hxx>
 #include <BSplCLib.hxx>
 #include <GC_MakeArcOfCircle.hxx>
 #include <Geom_BSplineCurve.hxx>
 #include <Geom_TrimmedCurve.hxx>
+#include <GeomAPI_Interpolate.hxx>
 #include <GProp_GProps.hxx>
 #include <gce_MakeCirc.hxx>
 #include <gp.hxx>
@@ -30,9 +34,17 @@
 #include <gp_Ax2.hxx>
 #include <gp_Circ.hxx>
 #include <gp_Pnt.hxx>
+#include <gp_Trsf.hxx>
 #include <NCollection_Array1.hxx>
+#include <NCollection_HArray1.hxx>
 #include <Standard_Integer.hxx>
+#include <TopoDS.hxx>
 #include <TopoDS_Shape.hxx>
+#include <TopoDS_Wire.hxx>
+
+#include <algorithm>
+#include <cmath>
+#include <vector>
 
 // Test OCC10006: BRepOffsetAPI_ThruSections loft operation with Boolean fusion
 TEST(BRepOffsetAPI_ThruSections_Test, OCC10006_LoftAndFusion)
@@ -390,4 +402,74 @@ TEST(BRepOffsetAPI_ThruSections_Test, OCC895_TwoCircularArcWires_NoTwist)
   GProp_GProps aProps;
   BRepGProp::SurfaceProperties(aThruSect.Shape(), aProps);
   EXPECT_NEAR(aProps.Mass(), 18.1614, 0.01) << "Surface area should be approximately 18.1614";
+}
+
+namespace
+{
+//! Closed BSpline wire interpolating an involute gear profile of theNbTeeth teeth of module 1,
+//! 12 points per flank.
+TopoDS_Wire gearWire(const int theNbTeeth)
+{
+  const double anAlpha = 20.0 * M_PI / 180.0;
+  const double aPitch  = theNbTeeth / 2.0;
+  const double aBase   = aPitch * std::cos(anAlpha);
+  const double aTip    = aPitch + 1.0;
+  const double aRoot   = std::max(aPitch - 1.25, aBase * 0.98);
+  const double aTTip   = std::sqrt((aTip / aBase) * (aTip / aBase) - 1.0);
+  const double aTStart = aRoot > aBase ? std::sqrt((aRoot / aBase) * (aRoot / aBase) - 1.0) : 0.0;
+  const double aHalf   = M_PI / (2.0 * theNbTeeth) + std::tan(anAlpha) - anAlpha;
+  std::vector<gp_Pnt> aPoints;
+  for (int aTooth = 0; aTooth < theNbTeeth; ++aTooth)
+  {
+    const double aCenter = 2.0 * M_PI * aTooth / theNbTeeth;
+    for (int aSide = -1; aSide <= 1; aSide += 2)
+    {
+      for (int i = 0; i <= 12; ++i)
+      {
+        const double aT  = aTStart + (aTTip - aTStart) * (aSide < 0 ? i : 12 - i) / 12.0;
+        const double aR  = aBase * std::sqrt(1.0 + aT * aT);
+        const double anA = aCenter + aSide * (aHalf - (aT - std::atan(aT)));
+        aPoints.emplace_back(aR * std::cos(anA), aR * std::sin(anA), 0.0);
+      }
+    }
+  }
+  occ::handle<NCollection_HArray1<gp_Pnt>> aPnts =
+    new NCollection_HArray1<gp_Pnt>(1, static_cast<int>(aPoints.size()));
+  for (size_t i = 0; i < aPoints.size(); ++i)
+  {
+    aPnts->SetValue(static_cast<int>(i + 1), aPoints[i]);
+  }
+  GeomAPI_Interpolate anInterpolate(aPnts, true, 1.0e-9);
+  anInterpolate.Perform();
+  return BRepBuilderAPI_MakeWire(BRepBuilderAPI_MakeEdge(anInterpolate.Curve()).Edge()).Wire();
+}
+} // namespace
+
+// A loft through 5 sections of a 100-tooth gear profile, each turned by 7.5 degrees, was a valid
+// solid turned inside out (volume -A*H): the classification of the infinite point that oriented
+// it is not reliable on such a face. The volume of the twisted extrusion is A*H.
+TEST(BRepOffsetAPI_ThruSections_Test, TwistedGearLoft_OrientedOutwards)
+{
+  const TopoDS_Wire aWire = gearWire(100);
+  GProp_GProps      aProfile;
+  BRepGProp::SurfaceProperties(BRepBuilderAPI_MakeFace(aWire, true).Face(), aProfile);
+  const double aHeight = 10.0;
+  for (const double aTwist : {10.0, 30.0})
+  {
+    BRepOffsetAPI_ThruSections aLoft(true, false, 1.0e-6);
+    for (int i = 0; i <= 4; ++i)
+    {
+      gp_Trsf aTrsf;
+      aTrsf.SetRotation(gp_Ax1(gp::Origin(), gp::DZ()), aTwist * M_PI / 180.0 * i / 4.0);
+      aTrsf.SetTranslationPart(gp_Vec(0.0, 0.0, aHeight * i / 4.0));
+      aLoft.AddWire(TopoDS::Wire(BRepBuilderAPI_Transform(aWire, aTrsf, true).Shape()));
+    }
+    aLoft.Build();
+    ASSERT_TRUE(aLoft.IsDone()) << aTwist;
+    EXPECT_TRUE(BRepCheck_Analyzer(aLoft.Shape()).IsValid()) << aTwist;
+    GProp_GProps aVolume;
+    BRepGProp::VolumeProperties(aLoft.Shape(), aVolume);
+    EXPECT_NEAR(aVolume.Mass(), aProfile.Mass() * aHeight, 1.0e-6 * aProfile.Mass() * aHeight)
+      << aTwist;
+  }
 }
