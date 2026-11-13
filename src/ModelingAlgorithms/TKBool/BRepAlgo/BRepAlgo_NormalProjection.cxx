@@ -21,6 +21,7 @@
 #include <BRepAdaptor_Surface.hxx>
 #include <BRepAlgo_NormalProjection.hxx>
 #include <BRepAlgoAPI_Section.hxx>
+#include <BRepLib_CheckCurveOnSurface.hxx>
 #include <BRepLib_MakeEdge.hxx>
 #include <BRepLib_MakeVertex.hxx>
 #include <BRepLib_MakeWire.hxx>
@@ -269,7 +270,9 @@ void BRepAlgo_NormalProjection::Build()
         }
         else
         {
-          Only2d = Only3d = false;
+          // each part is checked again: a degenerated previous part made the next ones skip the
+          // tolerance check and the trimming by the face below
+          Only2d = Only3d = Degenerated = false;
           HProjector->Bounds(k, Udeb, Ufin);
 
           /**************************************************************/
@@ -443,8 +446,22 @@ void BRepAlgo_NormalProjection::Build()
                           PCur2d,
                           TopoDS::Face(Faces->Value(j)),
                           appr.MaxError3d());
-            BB.UpdateVertex(TopExp::FirstVertex(TopoDS::Edge(prj)), appr.MaxError3d());
-            BB.UpdateVertex(TopExp::LastVertex(TopoDS::Edge(prj)), appr.MaxError3d());
+            // The approximation error is measured at its fitting parameters only: between them the
+            // 3D curve and the curve on the surface may deviate more (projection of a polyline
+            // onto a sphere). The edge tolerance must cover the real deviation.
+            double aTolE = appr.MaxError3d();
+            if (!Degenerated)
+            {
+              BRepLib_CheckCurveOnSurface aCheck(TopoDS::Edge(prj), TopoDS::Face(Faces->Value(j)));
+              aCheck.Perform();
+              if (aCheck.IsDone() && aCheck.MaxDistance() > aTolE)
+              {
+                aTolE = aCheck.MaxDistance();
+                BB.UpdateEdge(TopoDS::Edge(prj), aTolE);
+              }
+            }
+            BB.UpdateVertex(TopExp::FirstVertex(TopoDS::Edge(prj)), aTolE);
+            BB.UpdateVertex(TopExp::LastVertex(TopoDS::Edge(prj)), aTolE);
             if (Degenerated)
             {
               BB.Range(TopoDS::Edge(prj), TopoDS::Face(Faces->Value(j)), Udeb, Ufin);
