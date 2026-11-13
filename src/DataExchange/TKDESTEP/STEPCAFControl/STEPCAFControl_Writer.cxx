@@ -4350,15 +4350,6 @@ void STEPCAFControl_Writer::writeGeomTolerance(
     return;
   }
 
-  // Value
-  occ::handle<StepBasic_LengthMeasureWithUnit> aLMWU        = new StepBasic_LengthMeasureWithUnit();
-  StepBasic_Unit                               aUnit        = GetUnit(theRC);
-  occ::handle<StepBasic_MeasureValueMember>    aValueMember = new StepBasic_MeasureValueMember();
-  aValueMember->SetName("LENGTH_MEASURE");
-  aValueMember->SetReal(anObject->GetValue());
-  aLMWU->Init(aValueMember, aUnit);
-  aModel->AddWithRefs(aLMWU);
-
   // Geometric_Tolerance target
   occ::handle<StepRepr_ShapeAspect>                 aMainSA;
   occ::handle<StepRepr_RepresentationContext>       dummyRC;
@@ -4396,6 +4387,18 @@ void STEPCAFControl_Writer::writeGeomTolerance(
   }
   StepDimTol_GeometricToleranceTarget aGTTarget;
   aGTTarget.SetValue(aMainSA);
+
+  // Value, in the length unit of the toleranced shape. theRC is null when the document has no
+  // dimension: GetUnit then gave a metre unit for values in the document unit (0.1 mm was read
+  // back as 100 mm).
+  const occ::handle<StepRepr_RepresentationContext>& aRC = theRC.IsNull() ? dummyRC : theRC;
+  occ::handle<StepBasic_LengthMeasureWithUnit> aLMWU        = new StepBasic_LengthMeasureWithUnit();
+  StepBasic_Unit                               aUnit        = GetUnit(aRC);
+  occ::handle<StepBasic_MeasureValueMember>    aValueMember = new StepBasic_MeasureValueMember();
+  aValueMember->SetName("LENGTH_MEASURE");
+  aValueMember->SetReal(anObject->GetValue());
+  aLMWU->Init(aValueMember, aUnit);
+  aModel->AddWithRefs(aLMWU);
 
   bool isWithModif = false, isWithDatRef = false, isWithMaxTol = false;
   // Modifiers
@@ -4540,7 +4543,7 @@ void STEPCAFControl_Writer::writeGeomTolerance(
     }
   }
   aModel->AddWithRefs(aGeomTol);
-  writeToleranceZone(theWS, anObject, aGeomTol, theRC, theLocalFactors);
+  writeToleranceZone(theWS, anObject, aGeomTol, aRC, theLocalFactors);
   // Annotation plane and Presentation
   writePresentation(theWS,
                     anObject->GetPresentation(),
@@ -5340,6 +5343,22 @@ bool STEPCAFControl_Writer::writeDGTsAP242(const occ::handle<XSControl_WorkSessi
     if (!XCAFDoc_DimTolTool::GetRefShapeLabel(aGeomTolL, aFirstShapeL, aNullSeqL))
     {
       continue;
+    }
+    // Without a dimension written before, aRC is null and the length values of the tolerance and
+    // of its datum system were labelled with a metre unit while given in the document unit: the
+    // context of the (first) toleranced shape is taken.
+    if (aRC.IsNull() && !theWS->HGraph().IsNull())
+    {
+      TopLoc_Location                                       aLoc;
+      NCollection_Sequence<occ::handle<Standard_Transient>> aSeqRI;
+      FindEntities(theWS->TransferWriter()->FinderProcess(),
+                   XCAFDoc_ShapeTool::GetShape(aFirstShapeL.Value(1)),
+                   aLoc,
+                   aSeqRI);
+      if (aSeqRI.Length() > 0)
+      {
+        FindPDS(theWS->HGraph()->Graph(), aSeqRI.Value(1), aRC);
+      }
     }
     NCollection_Sequence<TDF_Label> aDatumSeq;
     XCAFDoc_DimTolTool::GetDatumWithObjectOfTolerLabels(aGeomTolL, aDatumSeq);

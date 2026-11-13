@@ -3734,19 +3734,17 @@ bool STEPCAFControl_Reader::readDatumsAP242(const occ::handle<Standard_Transient
                 }
                 else if (aModif->Value(m).CaseNumber() == 1)
                 {
+                  // a modifier or its value missing in the file (unknown reference) crashed
+                  const occ::handle<StepDimTol_DatumReferenceModifierWithValue> aModifWithVal =
+                    aModif->Value(m).DatumReferenceModifierWithValue();
+                  if (aModifWithVal.IsNull() || aModifWithVal->ModifierValue().IsNull())
+                  {
+                    continue;
+                  }
                   aXCAFModifWithVal =
-                    (XCAFDimTolObjects_DatumModifWithValue)(aModif->Value(m)
-                                                              .DatumReferenceModifierWithValue()
-                                                              ->ModifierType()
-                                                            + 1);
-                  double aVal = aModif->Value(m)
-                                  .DatumReferenceModifierWithValue()
-                                  ->ModifierValue()
-                                  ->ValueComponent();
-                  StepBasic_Unit anUnit = aModif->Value(m)
-                                            .DatumReferenceModifierWithValue()
-                                            ->ModifierValue()
-                                            ->UnitComponent();
+                    (XCAFDimTolObjects_DatumModifWithValue)(aModifWithVal->ModifierType() + 1);
+                  double         aVal   = aModifWithVal->ModifierValue()->ValueComponent();
+                  StepBasic_Unit anUnit = aModifWithVal->ModifierValue()->UnitComponent();
                   if (anUnit.IsNull())
                   {
                     continue;
@@ -3800,19 +3798,17 @@ bool STEPCAFControl_Reader::readDatumsAP242(const occ::handle<Standard_Transient
                     }
                     else if (aModifE->Value(k).CaseNumber() == 1)
                     {
+                      // a modifier or its value missing in the file (unknown reference) crashed
+                      const occ::handle<StepDimTol_DatumReferenceModifierWithValue>
+                        aModifWithVal = aModifE->Value(k).DatumReferenceModifierWithValue();
+                      if (aModifWithVal.IsNull() || aModifWithVal->ModifierValue().IsNull())
+                      {
+                        continue;
+                      }
                       aXCAFModifWithVal =
-                        (XCAFDimTolObjects_DatumModifWithValue)(aModifE->Value(k)
-                                                                  .DatumReferenceModifierWithValue()
-                                                                  ->ModifierType()
-                                                                + 1);
-                      double aVal = aModifE->Value(k)
-                                      .DatumReferenceModifierWithValue()
-                                      ->ModifierValue()
-                                      ->ValueComponent();
-                      StepBasic_Unit anUnit = aModifE->Value(k)
-                                                .DatumReferenceModifierWithValue()
-                                                ->ModifierValue()
-                                                ->UnitComponent();
+                        (XCAFDimTolObjects_DatumModifWithValue)(aModifWithVal->ModifierType() + 1);
+                      double         aVal   = aModifWithVal->ModifierValue()->ValueComponent();
+                      StepBasic_Unit anUnit = aModifWithVal->ModifierValue()->UnitComponent();
                       if (anUnit.IsNull())
                       {
                         continue;
@@ -5297,7 +5293,9 @@ static void setGeomTolObjectToXCAF(const occ::handle<Standard_Transient>&    the
     occ::handle<StepBasic_NamedUnit> NU = anUnit.NamedUnit();
     STEPConstruct_UnitContext        anUnitCtx;
     anUnitCtx.ComputeFactors(NU, theLocalFactors);
-    convertAngleValue(anUnitCtx, aVal);
+    // The maximum tolerance is a LENGTH_MEASURE (see the writer): an angle conversion multiplied
+    // it by a plane angle factor that a length unit leaves at 0.
+    aVal = aVal * anUnitCtx.LengthFactor();
     aTolObj->SetMaxValueModifier(aVal);
   }
 

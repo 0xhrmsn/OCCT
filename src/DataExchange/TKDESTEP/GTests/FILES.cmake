@@ -32,5 +32,6 @@ set(OCCT_TKDESTEP_GTests_FILES
     STEPCAFControl_Controller_Test.cxx
     STEPCAFControl_DimensionUnits_Test.cxx
     StepData_FieldArray_Test.cxx
+    STEPCAFControl_GeomTolerance_Test.cxx
     STEPCAFControl_Metadata_Test.cxx
 )
