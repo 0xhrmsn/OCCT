@@ -25,10 +25,12 @@ set(OCCT_TKDESTEP_GTests_FILES
     StepTidy_Merger_Test.cxx
     StepTidy_VectorReducer_Test.cxx
     StepShape_OrientedEdge_Test.cxx
+    StepToGeom_Nesting_Test.cxx
     StepToTopoDS_TranslateFace_Test.cxx
     StepToGeom_Test.cxx
     StepTransientReplacements_Test.cxx
     STEPCAFControl_AngularDimension_Test.cxx
+    STEPCAFControl_AssemblyNesting_Test.cxx
     STEPCAFControl_Controller_Test.cxx
     STEPCAFControl_DimensionUnits_Test.cxx
     StepData_FieldArray_Test.cxx

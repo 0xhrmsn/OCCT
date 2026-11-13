@@ -210,6 +210,29 @@ namespace
 // The better way is to pass this information via binder or via TopoDS_Shape itself, however,
 // this is very specific info to do so...
 bool NM_DETECTED = false;
+
+// Nesting of sub-assemblies and of mapped items being translated: a deep assembly structure in
+// the file exhausted the stack, a chain of mapped items too, and a mapped item leading back to
+// its own representation never ended. The counter is shared: both nestings add up. An entity
+// dropped as too deep stays bound with its fail, even if a shallower path reaches it later. A
+// 1 MB stack holds about 500 assembly levels in a Release build (450 with curves nested to
+// their own limit at the leaf); 100 is chosen to leave room for Debug builds and for chains of
+// mapped items through relationships (neither measured).
+constexpr int    THE_MAX_ASSEMBLY_NESTING = 100;
+thread_local int THE_ASSEMBLY_NESTING     = 0;
+
+class AssemblyNestingGuard
+{
+public:
+  AssemblyNestingGuard() { ++THE_ASSEMBLY_NESTING; }
+
+  ~AssemblyNestingGuard() { --THE_ASSEMBLY_NESTING; }
+
+  AssemblyNestingGuard(const AssemblyNestingGuard&)            = delete;
+  AssemblyNestingGuard& operator=(const AssemblyNestingGuard&) = delete;
+
+  bool IsTooDeep() const { return THE_ASSEMBLY_NESTING > THE_MAX_ASSEMBLY_NESTING; }
+};
 } // namespace
 
 // ============================================================================
@@ -940,13 +963,23 @@ occ::handle<TransferBRep_ShapeBinder> STEPControl_ActorRead::TransferEntity(
   if (IsDepend)
   {
     Message_ProgressScope aPS(theProgress, nullptr, 2);
+    bool                  isTooDeep = false;
 
     if (!PD.IsNull())
     {
       binder = TP->Find(PD);
       if (binder.IsNull())
       {
-        binder = TransferEntity(PD, TP, theLocalFactors, false, aPS.Next());
+        const AssemblyNestingGuard aNesting;
+        isTooDeep = aNesting.IsTooDeep();
+        if (isTooDeep)
+        {
+          TP->AddFail(NAUO, "Assemblies nested too deeply; component dropped");
+        }
+        else
+        {
+          binder = TransferEntity(PD, TP, theLocalFactors, false, aPS.Next());
+        }
       }
       theResult = TransferBRep::ShapeResult(binder);
       if (!theResult.IsNull())
@@ -966,7 +999,7 @@ occ::handle<TransferBRep_ShapeBinder> STEPControl_ActorRead::TransferEntity(
       }
     }
 
-    if (theResult.IsNull() && !SRR.IsNull())
+    if (theResult.IsNull() && !SRR.IsNull() && !isTooDeep)
     {
       binder = TP->Find(SRR);
       if (binder.IsNull())
@@ -2015,6 +2048,14 @@ occ::handle<TransferBRep_ShapeBinder> STEPControl_ActorRead::TransferEntity(
   const Message_ProgressRange&                  theProgress)
 {
   occ::handle<TransferBRep_ShapeBinder> shbinder;
+  // For the whole transfer of the item: the mapped representation and the representations
+  // related to it below (TransferRelatedSRR) may lead to further mapped items.
+  const AssemblyNestingGuard aNesting;
+  if (aNesting.IsTooDeep())
+  {
+    TP->AddFail(mapit, "Mapped items nested too deeply or cyclic; item dropped");
+    return shbinder;
+  }
 
   // --------------------------------------------------------------
   // On se trouve ici dans un contexte " d'assemblage geometrique "

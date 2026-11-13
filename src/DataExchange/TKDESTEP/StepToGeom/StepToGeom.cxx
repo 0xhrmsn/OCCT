@@ -142,6 +142,29 @@
 #include <algorithm>
 #include <cmath>
 
+namespace
+{
+// Nesting of the curves and surfaces being converted. A file can nest them without limit (a
+// trimmed curve of a trimmed curve ...) or make one refer to itself: the recursion through
+// MakeCurve, MakeCurve2d and MakeSurface exhausted the stack (10000 levels in a 1 MB file). The
+// same limit as for the nesting of IGES entities; a deeper curve or surface is not converted.
+constexpr int    THE_MAX_GEOM_NESTING = 100;
+thread_local int THE_GEOM_NESTING     = 0;
+
+class GeomNestingGuard
+{
+public:
+  GeomNestingGuard() { ++THE_GEOM_NESTING; }
+
+  ~GeomNestingGuard() { --THE_GEOM_NESTING; }
+
+  GeomNestingGuard(const GeomNestingGuard&)            = delete;
+  GeomNestingGuard& operator=(const GeomNestingGuard&) = delete;
+
+  bool IsTooDeep() const { return THE_GEOM_NESTING > THE_MAX_GEOM_NESTING; }
+};
+} // namespace
+
 //=============================================================================
 // Creation d' un Ax1Placement de Geom a partir d' un axis1_placement de Step
 //=============================================================================
@@ -1403,7 +1426,8 @@ occ::handle<Geom_ConicalSurface> StepToGeom::MakeConicalSurface(
 occ::handle<Geom_Curve> StepToGeom::MakeCurve(const occ::handle<StepGeom_Curve>& SC,
                                               const StepData_Factors&            theLocalFactors)
 {
-  if (SC.IsNull())
+  const GeomNestingGuard aNesting;
+  if (SC.IsNull() || aNesting.IsTooDeep())
   {
     return occ::handle<Geom_Curve>();
   }
@@ -1476,6 +1500,11 @@ occ::handle<Geom_Curve> StepToGeom::MakeCurve(const occ::handle<StepGeom_Curve>&
 occ::handle<Geom2d_Curve> StepToGeom::MakeCurve2d(const occ::handle<StepGeom_Curve>& SC,
                                                   const StepData_Factors& theLocalFactors)
 {
+  const GeomNestingGuard aNesting;
+  if (SC.IsNull() || aNesting.IsTooDeep())
+  {
+    return occ::handle<Geom2d_Curve>();
+  }
   if (SC->IsKind(STANDARD_TYPE(StepGeom_Line)))
   {
     return MakeLine2d(occ::down_cast<StepGeom_Line>(SC), theLocalFactors);
@@ -1984,7 +2013,8 @@ occ::handle<Geom_Surface> StepToGeom::MakeSurface(const occ::handle<StepGeom_Sur
                                                   const StepData_Factors& theLocalFactors)
 {
   // sln 01.10.2001 BUC61003. If entry shell is NULL do nothing
-  if (SS.IsNull())
+  const GeomNestingGuard aNesting;
+  if (SS.IsNull() || aNesting.IsTooDeep())
   {
     return occ::handle<Geom_Surface>();
   }

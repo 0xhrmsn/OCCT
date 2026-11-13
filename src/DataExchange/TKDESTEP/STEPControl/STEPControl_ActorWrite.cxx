@@ -1956,8 +1956,13 @@ occ::handle<Transfer_Binder> STEPControl_ActorWrite::TransferSubShape(
   bool                         isJustTransferred = false;
   if (!iasdr || resbind.IsNull())
   {
+    // A sub-assembly goes straight to TransferCompound, as TransferShape would do: the large
+    // stack frame of TransferShape on every level overflowed a 1 MB stack at 67 levels.
+    TopoDS_Shape                 aSubShape = mapper->Value();
     occ::handle<Transfer_Binder> resbind1 =
-      TransferShape(mapper, sdr, FP, theLocalFactors, shapeGroup, isManifold, theProgress);
+      !aSubShape.IsNull() && IsAssembly(aStepModel, aSubShape)
+        ? TransferCompound(mapper, sdr, FP, theLocalFactors, theProgress)
+        : TransferShape(mapper, sdr, FP, theLocalFactors, shapeGroup, isManifold, theProgress);
     if (resbind1.IsNull() || sdr->UsedRepresentation().IsNull())
     {
       return occ::handle<Transfer_Binder>();

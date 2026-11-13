@@ -41,6 +41,28 @@
 #include <TopoDS_Wire.hxx>
 #include <Transfer_TransientProcess.hxx>
 
+namespace
+{
+// Nesting of composite curves being translated: only a curve containing itself directly was
+// refused, so that a cycle through another composite curve (A -> B -> A) or a deep nesting
+// exhausted the stack. The same limit as for the nesting of curves in StepToGeom.
+constexpr int    THE_MAX_COMPOSITE_NESTING = 100;
+thread_local int THE_COMPOSITE_NESTING     = 0;
+
+class CompositeNestingGuard
+{
+public:
+  CompositeNestingGuard() { ++THE_COMPOSITE_NESTING; }
+
+  ~CompositeNestingGuard() { --THE_COMPOSITE_NESTING; }
+
+  CompositeNestingGuard(const CompositeNestingGuard&)            = delete;
+  CompositeNestingGuard& operator=(const CompositeNestingGuard&) = delete;
+
+  bool IsTooDeep() const { return THE_COMPOSITE_NESTING > THE_MAX_COMPOSITE_NESTING; }
+};
+} // namespace
+
 //=================================================================================================
 
 StepToTopoDS_TranslateCompositeCurve::StepToTopoDS_TranslateCompositeCurve()
@@ -93,6 +115,12 @@ bool StepToTopoDS_TranslateCompositeCurve::Init(const occ::handle<StepGeom_Compo
   myInfiniteSegment = false;
   if (CC.IsNull())
   {
+    return false;
+  }
+  const CompositeNestingGuard aNesting;
+  if (aNesting.IsTooDeep())
+  {
+    TP->AddFail(CC, "Composite curves nested too deeply or cyclic; curve dropped");
     return false;
   }
 

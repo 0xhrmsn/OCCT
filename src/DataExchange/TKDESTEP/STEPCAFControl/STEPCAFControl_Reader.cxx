@@ -5773,34 +5773,51 @@ void collectViewShapes(const occ::handle<XSControl_WorkSession>&   theWS,
   occ::handle<Transfer_TransientProcess> aTP     = aTR->TransientProcess();
   const Interface_Graph&                 aGraph  = aTP->Graph();
   occ::handle<XCAFDoc_ShapeTool>         aSTool  = XCAFDoc_DocumentTool::ShapeTool(theDoc->Main());
-  int                                    anIndex = aTP->MapIndex(theRepr);
-  TopoDS_Shape                           aSh;
-  if (anIndex > 0)
+  // Representations are walked with an explicit stack, in the order of the former recursion,
+  // and each one once: relationships forming a cycle (A -> B -> A) recursed without end and a
+  // long chain of them exhausted the stack.
+  NCollection_Sequence<occ::handle<StepRepr_Representation>> aStack;
+  NCollection_Map<occ::handle<Standard_Transient>>           aVisited;
+  aStack.Append(theRepr);
+  while (!aStack.IsEmpty())
   {
-    occ::handle<Transfer_Binder> aBinder = aTP->MapItem(anIndex);
-    aSh                                  = TransferBRep::ShapeResult(aBinder);
-  }
-  if (!aSh.IsNull())
-  {
-    TDF_Label aShL;
-    aSTool->FindShape(aSh, aShL);
-    if (!aShL.IsNull())
-    {
-      theShapes.Append(aShL);
-    }
-  }
-  Interface_EntityIterator anIter = aGraph.Sharings(theRepr);
-  for (; anIter.More(); anIter.Next())
-  {
-    if (!anIter.Value()->IsKind(STANDARD_TYPE(StepRepr_RepresentationRelationship)))
+    const occ::handle<StepRepr_Representation> aRepr = aStack.Last();
+    aStack.Remove(aStack.Length());
+    if (!aVisited.Add(aRepr))
     {
       continue;
     }
-    occ::handle<StepRepr_RepresentationRelationship> aReprRelationship =
-      occ::down_cast<StepRepr_RepresentationRelationship>(anIter.Value());
-    if (!aReprRelationship->Rep1().IsNull() && aReprRelationship->Rep1() != theRepr)
+    int          anIndex = aTP->MapIndex(aRepr);
+    TopoDS_Shape aSh;
+    if (anIndex > 0)
     {
-      collectViewShapes(theWS, theDoc, aReprRelationship->Rep1(), theShapes);
+      occ::handle<Transfer_Binder> aBinder = aTP->MapItem(anIndex);
+      aSh                                  = TransferBRep::ShapeResult(aBinder);
+    }
+    if (!aSh.IsNull())
+    {
+      TDF_Label aShL;
+      aSTool->FindShape(aSh, aShL);
+      if (!aShL.IsNull())
+      {
+        theShapes.Append(aShL);
+      }
+    }
+    const int                aNbStacked = aStack.Length();
+    Interface_EntityIterator anIter     = aGraph.Sharings(aRepr);
+    for (; anIter.More(); anIter.Next())
+    {
+      if (!anIter.Value()->IsKind(STANDARD_TYPE(StepRepr_RepresentationRelationship)))
+      {
+        continue;
+      }
+      occ::handle<StepRepr_RepresentationRelationship> aReprRelationship =
+        occ::down_cast<StepRepr_RepresentationRelationship>(anIter.Value());
+      if (!aReprRelationship->Rep1().IsNull() && aReprRelationship->Rep1() != aRepr)
+      {
+        // inserted in reverse so that the first relationship is processed first
+        aStack.InsertAfter(aNbStacked, aReprRelationship->Rep1());
+      }
     }
   }
 }
