@@ -26,6 +26,7 @@
 #include <BRepPrimAPI_MakeCylinder.hxx>
 #include <BRepPrimAPI_MakeSphere.hxx>
 #include <BRepCheck_Analyzer.hxx>
+#include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
 #include <Geom_Circle.hxx>
 #include <Geom_Ellipse.hxx>
@@ -36,6 +37,7 @@
 #include <gp_Circ.hxx>
 #include <gp_Elips.hxx>
 #include <gp_Pnt.hxx>
+#include <Message_ProgressIndicator.hxx>
 #include <NCollection_Array1.hxx>
 #include <TopoDS.hxx>
 #include <TopoDS_Shape.hxx>
@@ -1200,4 +1202,57 @@ TEST(BRepOffset_MakeSimpleOffsetTest, GetSafeOffset_SharpAndSmoothShapes)
   EXPECT_LT(aBoxSafe, 1.0e-3); // right angles between faces: almost no safe offset
   BRepOffset_MakeSimpleOffset aSphere(BRepPrimAPI_MakeSphere(10.0).Shape(), 1.0);
   EXPECT_GT(aSphere.GetSafeOffset(1.0e-4), 1.0e3); // smooth: no angle between faces
+}
+
+namespace
+{
+//! Progress indicator of a user who cancels after theNbChecks checks.
+class CancelAfterChecks : public Message_ProgressIndicator
+{
+public:
+  explicit CancelAfterChecks(const int theNbChecks)
+      : myNbChecks(theNbChecks)
+  {
+  }
+
+  bool UserBreak() override { return --myNbChecks < 0; }
+
+  void Show(const Message_ProgressScope&, const bool) override {}
+
+  bool HasCancelled() const { return myNbChecks < 0; }
+
+private:
+  int myNbChecks;
+};
+} // namespace
+
+// A break during the analysis of the faces left the edge map incomplete and the offset threw
+// Standard_NoSuchObject instead of reporting BRepOffset_UserBreak. Every cancel point of the
+// offset by join must end with the user break status and without an exception.
+TEST(BRepOffset_MakeOffsetTest, OffsetShape_CancelAtAnyPoint_ReportsUserBreak)
+{
+  TopoDS_Shape aPlate = BRepPrimAPI_MakeBox(gp_Pnt(0.0, 0.0, 0.0), 60.0, 40.0, 5.0).Shape();
+  for (int i = 0; i < 3; ++i)
+  {
+    const gp_Ax2 anAxis(gp_Pnt(12.0 + 18.0 * i, 20.0, -1.0), gp::DZ());
+    aPlate = BRepAlgoAPI_Cut(aPlate, BRepPrimAPI_MakeCylinder(anAxis, 4.0, 7.0).Shape()).Shape();
+  }
+
+  int aNbCancelled = 0;
+  for (int aNbChecks = 0; aNbChecks < 100000; ++aNbChecks)
+  {
+    occ::handle<CancelAfterChecks> anIndicator = new CancelAfterChecks(aNbChecks);
+    BRepOffset_MakeOffset          anOffset;
+    anOffset.Initialize(aPlate, 0.5, 1.0e-3, BRepOffset_Skin, false, false, GeomAbs_Arc);
+    EXPECT_NO_THROW(anOffset.MakeOffsetShape(anIndicator->Start())) << "checks " << aNbChecks;
+    if (!anIndicator->HasCancelled())
+    {
+      EXPECT_TRUE(anOffset.IsDone());
+      break;
+    }
+    ++aNbCancelled;
+    EXPECT_FALSE(anOffset.IsDone()) << "checks " << aNbChecks;
+    EXPECT_EQ(anOffset.Error(), BRepOffset_UserBreak) << "checks " << aNbChecks;
+  }
+  EXPECT_GT(aNbCancelled, 0);
 }

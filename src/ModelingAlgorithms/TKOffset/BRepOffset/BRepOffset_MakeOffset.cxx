@@ -948,6 +948,13 @@ void BRepOffset_MakeOffset::MakeOffsetShape(const Message_ProgressRange& theRang
     myAnalyse.SetFaceOffsetMap(myFaceOffset);
   }
   myAnalyse.Perform(myFaceComp, TolAngle, aPS.Next(aSteps(PIOperation_Analyse)));
+  // A cancelled analysis leaves the edge map incomplete: Type() below would throw
+  // Standard_NoSuchObject instead of reporting the user break.
+  if (!aPS.More())
+  {
+    myError = BRepOffset_UserBreak;
+    return;
+  }
   TopExp_Explorer anEExp(myFaceComp, TopAbs_EDGE);
   for (; anEExp.More(); anEExp.Next())
   {
@@ -962,11 +969,6 @@ void BRepOffset_MakeOffset::MakeOffsetShape(const Message_ProgressRange& theRang
       myError = BRepOffset_MixedConnectivity;
       return;
     }
-  }
-  if (!aPS.More())
-  {
-    myError = BRepOffset_UserBreak;
-    return;
   }
   //---------------------------------------------------
   // Construction of Offset from preanalysis.
