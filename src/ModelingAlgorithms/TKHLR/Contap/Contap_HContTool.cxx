@@ -21,7 +21,61 @@
 #include <gp_Pnt.hxx>
 #include <gp_Pnt2d.hxx>
 
-static double uinf, vinf, usup, vsup;
+//! Parametric bounds of S used for the sample points: ordered, and infinite bounds replaced by a
+//! finite range. Computed from S at each call: the bounds were kept in static variables set by
+//! NbSamplePoints and read by SamplePoint, so that two threads (HLR in parallel) or two surfaces
+//! sampled alternately mixed their bounds.
+static void sampleBounds(const occ::handle<Adaptor3d_Surface>& S,
+                         double&                               uinf,
+                         double&                               usup,
+                         double&                               vinf,
+                         double&                               vsup)
+{
+  uinf = S->FirstUParameter();
+  usup = S->LastUParameter();
+  vinf = S->FirstVParameter();
+  vsup = S->LastVParameter();
+
+  if (usup < uinf)
+  {
+    double temp = uinf;
+    uinf        = usup;
+    usup        = temp;
+  }
+  if (vsup < vinf)
+  {
+    double temp = vinf;
+    vinf        = vsup;
+    vsup        = temp;
+  }
+  if (uinf == RealFirst() && usup == RealLast())
+  {
+    uinf = -1.e5;
+    usup = 1.e5;
+  }
+  else if (uinf == RealFirst())
+  {
+    uinf = usup - 2.e5;
+  }
+  else if (usup == RealLast())
+  {
+    usup = uinf + 2.e5;
+  }
+
+  if (vinf == RealFirst() && vsup == RealLast())
+  {
+    vinf = -1.e5;
+    vsup = 1.e5;
+  }
+  else if (vinf == RealFirst())
+  {
+    vinf = vsup - 2.e5;
+  }
+  else if (vsup == RealLast())
+  {
+    vsup = vinf + 2.e5;
+  }
+}
 
 int Contap_HContTool::NbSamplesV(const occ::handle<Adaptor3d_Surface>& S,
                                  const double,
@@ -116,50 +170,8 @@ int Contap_HContTool::NbSamplesU(const occ::handle<Adaptor3d_Surface>& S,
 
 int Contap_HContTool::NbSamplePoints(const occ::handle<Adaptor3d_Surface>& S)
 {
-  uinf = S->FirstUParameter();
-  usup = S->LastUParameter();
-  vinf = S->FirstVParameter();
-  vsup = S->LastVParameter();
-
-  if (usup < uinf)
-  {
-    double temp = uinf;
-    uinf        = usup;
-    usup        = temp;
-  }
-  if (vsup < vinf)
-  {
-    double temp = vinf;
-    vinf        = vsup;
-    vsup        = temp;
-  }
-  if (uinf == RealFirst() && usup == RealLast())
-  {
-    uinf = -1.e5;
-    usup = 1.e5;
-  }
-  else if (uinf == RealFirst())
-  {
-    uinf = usup - 2.e5;
-  }
-  else if (usup == RealLast())
-  {
-    usup = uinf + 2.e5;
-  }
-
-  if (vinf == RealFirst() && vsup == RealLast())
-  {
-    vinf = -1.e5;
-    vsup = 1.e5;
-  }
-  else if (vinf == RealFirst())
-  {
-    vinf = vsup - 2.e5;
-  }
-  else if (vsup == RealLast())
-  {
-    vsup = vinf + 2.e5;
-  }
+  double uinf, usup, vinf, vsup;
+  sampleBounds(S, uinf, usup, vinf, vsup);
   if (S->GetType() == GeomAbs_BSplineSurface)
   {
     int m = (NbSamplesU(S, uinf, usup) / 3) * (NbSamplesV(S, vinf, vsup) / 3);
@@ -183,6 +195,8 @@ void Contap_HContTool::SamplePoint(const occ::handle<Adaptor3d_Surface>& S,
                                    double&                               U,
                                    double&                               V)
 {
+  double uinf, usup, vinf, vsup;
+  sampleBounds(S, uinf, usup, vinf, vsup);
   if (S->GetType() == GeomAbs_BSplineSurface)
   {
     int nbIntU = NbSamplesU(S, uinf, usup) / 3;
