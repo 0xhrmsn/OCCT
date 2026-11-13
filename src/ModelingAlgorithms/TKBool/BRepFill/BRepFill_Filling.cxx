@@ -167,7 +167,9 @@ BRepFill_Filling::BRepFill_Filling(const int    Degree,
 
   myIsInitFaceGiven = false;
 
-  myIsDone = false;
+  myIsDone      = false;
+  myApproxError = 0.0;
+  myG1Measured  = 0.0;
 }
 
 //=================================================================================================
@@ -570,6 +572,8 @@ void BRepFill_Filling::FindExtremitiesOfHoles(const NCollection_List<TopoDS_Shap
 
 void BRepFill_Filling::Build()
 {
+  myApproxError = 0.0;
+  myG1Measured  = 0.0;
   myBuilder.reset(new GeomPlate_BuildPlateSurface(myDegree,
                                                   myNbPtsOnCur,
                                                   myNbIter,
@@ -710,7 +714,8 @@ void BRepFill_Filling::Build()
     seuil = std::max(myTol3d, 10 * myBuilder->G0Error()); //????????
     GeomPlate_PlateG0Criterion Criterion(S2d, S3d, seuil);
     GeomPlate_MakeApprox       Approx(GPlate, Criterion, myTol3d, myMaxSegments, myMaxDeg);
-    Surface = Approx.Surface();
+    Surface       = Approx.Surface();
+    myApproxError = Approx.ApproxError();
   }
   else
   {
@@ -719,7 +724,8 @@ void BRepFill_Filling::Build()
       //GeomConvert_ApproxSurface Approx( GPlate, myTol3d, GeomAbs_C1, GeomAbs_C1, myMaxDeg, myMaxDeg, myMaxSegments, 1 );
       //Approx.Dump( std::cout );
     // clang-format on
-    Surface = Approx.Surface();
+    Surface       = Approx.Surface();
+    myApproxError = Approx.ApproxError();
   }
 
   // Build the final wire and final face
@@ -782,6 +788,61 @@ void BRepFill_Filling::Build()
   TopoDS_Wire FinalWire = WireFromList(FinalEdges);
 
   myFace = BRepLib_MakeFace(Surface, FinalWire);
+
+  // The G1 error of the plate surface is not the one of the face (its approximation): the angle
+  // between the face and the support faces is measured along the constraint edges.
+  myG1Measured = 0.0;
+  double aU1 = 0.0, aU2 = 0.0, aV1 = 0.0, aV2 = 0.0;
+  Surface->Bounds(aU1, aU2, aV1, aV2);
+  GeomAPI_ProjectPointOnSurf aProj;
+  aProj.Init(Surface, aU1, aU2, aV1, aV2);
+  for (const NCollection_Sequence<BRepFill_EdgeFaceAndOrder>* aSeq : {&myBoundary, &myConstraints})
+  {
+    for (const BRepFill_EdgeFaceAndOrder& aConstr : *aSeq)
+    {
+      if (aConstr.myOrder == GeomAbs_C0 || aConstr.myFace.IsNull()
+          || BRep_Tool::Degenerated(aConstr.myEdge))
+      {
+        continue;
+      }
+      double                          aFirst = 0.0, aLast = 0.0;
+      const occ::handle<Geom2d_Curve> aPCurve =
+        BRep_Tool::CurveOnSurface(aConstr.myEdge, aConstr.myFace, aFirst, aLast);
+      if (aPCurve.IsNull())
+      {
+        continue;
+      }
+      BRepAdaptor_Surface aSupport(aConstr.myFace, false);
+      const int           aNbSamples = 2 * myNbPtsOnCur + 1;
+      for (int k = 0; k <= aNbSamples; ++k)
+      {
+        const gp_Pnt2d aUV = aPCurve->Value(aFirst + (aLast - aFirst) * k / aNbSamples);
+        gp_Pnt         aPnt;
+        gp_Vec         aD1U, aD1V;
+        aSupport.D1(aUV.X(), aUV.Y(), aPnt, aD1U, aD1V);
+        const gp_Vec aNSupport = aD1U.Crossed(aD1V);
+        if (aNSupport.SquareMagnitude() < gp::Resolution())
+        {
+          continue;
+        }
+        aProj.Perform(aPnt);
+        if (!aProj.IsDone() || aProj.NbPoints() == 0)
+        {
+          continue;
+        }
+        double aU = 0.0, aV = 0.0;
+        aProj.LowerDistanceParameters(aU, aV);
+        Surface->D1(aU, aV, aPnt, aD1U, aD1V);
+        const gp_Vec aNFace = aD1U.Crossed(aD1V);
+        if (aNFace.SquareMagnitude() < gp::Resolution())
+        {
+          continue;
+        }
+        const double anAngle = aNSupport.Angle(aNFace);
+        myG1Measured         = std::max(myG1Measured, std::min(anAngle, M_PI - anAngle));
+      }
+    }
+  }
 }
 
 //=================================================================================================
@@ -860,7 +921,8 @@ const NCollection_List<TopoDS_Shape>& BRepFill_Filling::Generated(const TopoDS_S
 //==========================================================================
 double BRepFill_Filling::G0Error() const
 {
-  return myBuilder->G0Error();
+  // the plate error alone was reported: 3.8e-7 for a face 8.4e-5 away from its constraints
+  return myBuilder->G0Error() + myApproxError;
 }
 
 //=======================================================================
@@ -870,7 +932,7 @@ double BRepFill_Filling::G0Error() const
 //======================================================================
 double BRepFill_Filling::G1Error() const
 {
-  return myBuilder->G1Error();
+  return std::max(myBuilder->G1Error(), myG1Measured);
 }
 
 //=======================================================================
@@ -890,7 +952,7 @@ double BRepFill_Filling::G2Error() const
 //==========================================================================
 double BRepFill_Filling::G0Error(const int Index)
 {
-  return myBuilder->G0Error(Index);
+  return myBuilder->G0Error(Index) + myApproxError;
 }
 
 //==========================================================================

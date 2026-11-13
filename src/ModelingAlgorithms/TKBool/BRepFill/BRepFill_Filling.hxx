@@ -186,8 +186,14 @@ public:
   //! only by edges has no shape generating the face.
   Standard_EXPORT const NCollection_List<TopoDS_Shape>& Generated(const TopoDS_Shape& S);
 
+  //! Distance between the constraints and the face: the error of the plate surface
+  //! plus the error of its B-spline approximation (the face is the approximation).
   Standard_EXPORT double G0Error() const;
 
+  //! Largest angle between the face and the support faces of the constraints: the
+  //! error of the plate surface, or the angle measured on the face at sample points
+  //! of the constraint edges when larger (the face is an approximation of the plate).
+  //! The measured angle is an estimate: it may be exceeded between the samples.
   Standard_EXPORT double G1Error() const;
 
   Standard_EXPORT double G2Error() const;
@@ -234,6 +240,11 @@ private:
   bool                                                                     myAnisotropie;
   bool                                                                     myIsInitFaceGiven;
   bool                                                                     myIsDone;
+  //! Distance between the plate surface and its B-spline approximation (the face).
+  double                                                                   myApproxError;
+  //! Largest angle between the face and the support faces of G1/G2 constraints,
+  //! measured on the face at sample points of the constraint edges.
+  double                                                                   myG1Measured;
 
   //! Face given as a free constraint -> edges of the boundary built on it.
   NCollection_DataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher>
