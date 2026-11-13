@@ -17,6 +17,8 @@
 #include <Geom_BSplineSurface.hxx>
 #include <Geom_Circle.hxx>
 #include <Geom_ConicalSurface.hxx>
+#include <Geom_Line.hxx>
+#include <Geom_Plane.hxx>
 #include <Geom_RectangularTrimmedSurface.hxx>
 #include <Geom_SurfaceOfLinearExtrusion.hxx>
 #include <GeomAPI_IntSS.hxx>
@@ -3629,5 +3631,32 @@ TEST(GeomAPI_IntSSTest, OCC23972_TwoConesIntersection)
     }
 
     ASSERT_GT(aU2 - aU1, 1.0e-20) << "Degenerate parameter range for curve " << anIdx;
+  }
+}
+
+// A plane containing the axis of a cone cuts it along two generatrices, each cut at the apex in
+// two semi-infinite parts. Each part was given as the whole infinite line: 4 lines, each line
+// twice.
+TEST(GeomAPI_IntSSTest, ConePlaneThroughAxis_EachLineOnce)
+{
+  const occ::handle<Geom_ConicalSurface> aCone  = new Geom_ConicalSurface(gp_Ax3(), 0.5, 10.0);
+  const occ::handle<Geom_Plane>          aPlane =
+    new Geom_Plane(gp_Pnt(0.0, 0.0, 0.0), gp_Dir(1.0, 0.0, 0.0));
+  GeomAPI_IntSS                          anInter(aCone, aPlane, Precision::Confusion());
+  ASSERT_TRUE(anInter.IsDone());
+  ASSERT_EQ(anInter.NbLines(), 2);
+  const occ::handle<Geom_Line> aFirst  = occ::down_cast<Geom_Line>(anInter.Line(1));
+  const occ::handle<Geom_Line> aSecond = occ::down_cast<Geom_Line>(anInter.Line(2));
+  ASSERT_FALSE(aFirst.IsNull());
+  ASSERT_FALSE(aSecond.IsNull());
+  // the two generatrices are symmetric about the axis: not parallel
+  EXPECT_FALSE(
+    aFirst->Lin().Direction().IsParallel(aSecond->Lin().Direction(), Precision::Angular()));
+  // both lie in the plane x = 0 and pass through the apex
+  for (const occ::handle<Geom_Line>& aLine : {aFirst, aSecond})
+  {
+    EXPECT_NEAR(aLine->Lin().Location().X(), 0.0, Precision::Confusion());
+    EXPECT_NEAR(aLine->Lin().Direction().X(), 0.0, Precision::Angular());
+    EXPECT_LT(aLine->Lin().Distance(aCone->Apex()), Precision::Confusion());
   }
 }

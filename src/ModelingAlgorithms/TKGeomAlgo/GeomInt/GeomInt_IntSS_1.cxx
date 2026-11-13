@@ -424,6 +424,21 @@ void GeomInt_IntSS::MakeCurve(const int                               Index,
           {
             ok = (dom2->Classify(gp_Pnt2d(u2, v2), TolX) != TopAbs_OUT);
           }
+          // A semi-infinite part is given as the whole infinite curve. The two halves of a line cut
+          // at a point (the generatrices of a cone cut at the apex by a plane containing the axis)
+          // gave the same line twice: the line is kept once.
+          if (ok && typl == IntPatch_Lin)
+          {
+            const gp_Lin aLin = occ::down_cast<Geom_Line>(newc)->Lin();
+            for (int k = 1; k <= sline.Length() && ok; ++k)
+            {
+              const occ::handle<Geom_Line> aPrev = occ::down_cast<Geom_Line>(sline.Value(k));
+              ok = aPrev.IsNull()
+                   || !aPrev->Lin().Direction().IsParallel(aLin.Direction(),
+                                                           Precision::Angular())
+                   || aPrev->Lin().Distance(aLin.Location()) > Precision::Confusion();
+            }
+          }
           if (ok)
           {
             sline.Append(newc);
