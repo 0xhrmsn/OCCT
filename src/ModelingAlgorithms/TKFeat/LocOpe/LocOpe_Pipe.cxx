@@ -21,6 +21,7 @@
 #include <Geom_Plane.hxx>
 #include <Geom_RectangularTrimmedSurface.hxx>
 #include <Geom_Surface.hxx>
+#include <Geom_TrimmedCurve.hxx>
 #include <GeomConvert.hxx>
 #include <gp_Pln.hxx>
 #include <LocOpe.hxx>
@@ -346,8 +347,13 @@ const NCollection_Sequence<occ::handle<Geom_Curve>>& LocOpe_Pipe::Curves(
     TopExp_Explorer ex(W, TopAbs_EDGE);
     for (; ex.More(); ex.Next())
     {
-      occ::handle<Geom_Curve>        C1 = BRep_Tool::Curve(TopoDS::Edge(ex.Current()), p1, p2);
-      occ::handle<Geom_BSplineCurve> C  = GeomConvert::CurveToBSplineCurve(C1);
+      occ::handle<Geom_Curve> C1 = BRep_Tool::Curve(TopoDS::Edge(ex.Current()), p1, p2);
+      // A curve of infinite range (e.g. the line of a straight edge) cannot be converted.
+      if (Precision::IsInfinite(C1->FirstParameter()) || Precision::IsInfinite(C1->LastParameter()))
+      {
+        C1 = new Geom_TrimmedCurve(C1, p1, p2);
+      }
+      occ::handle<Geom_BSplineCurve> C = GeomConvert::CurveToBSplineCurve(C1);
       if (C.IsNull())
       {
         continue;
@@ -472,8 +478,13 @@ occ::handle<Geom_Curve> LocOpe_Pipe::BarycCurve()
   TopExp_Explorer ex(W, TopAbs_EDGE);
   for (; ex.More(); ex.Next())
   {
-    occ::handle<Geom_Curve>        C1 = BRep_Tool::Curve(TopoDS::Edge(ex.Current()), p1, p2);
-    occ::handle<Geom_BSplineCurve> C  = GeomConvert::CurveToBSplineCurve(C1);
+    occ::handle<Geom_Curve> C1 = BRep_Tool::Curve(TopoDS::Edge(ex.Current()), p1, p2);
+    // A curve of infinite range (e.g. the line of a straight edge) cannot be converted.
+    if (Precision::IsInfinite(C1->FirstParameter()) || Precision::IsInfinite(C1->LastParameter()))
+    {
+      C1 = new Geom_TrimmedCurve(C1, p1, p2);
+    }
+    occ::handle<Geom_BSplineCurve> C = GeomConvert::CurveToBSplineCurve(C1);
 
     if (C.IsNull())
     {
