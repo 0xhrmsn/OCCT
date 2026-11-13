@@ -407,8 +407,19 @@ void GeomAPI_PointsToBSplineSurface::Init(const NCollection_Array2<gp_Pnt>& Poin
   }
 
   // approximate the resulting poles:
-
-  AppDef_BSplineCompute TheComputer2(DegMin, DegMax, Tol3D, Tol2D, nbit, true, ParType, UseSquares);
+  // the errors of the two passes add up (the surface is a convex combination of the approximated
+  // poles); each pass taking Tol3D gave surfaces up to 1.8 * Tol3D away from the points. The
+  // second pass takes the tolerance left by the first one, not less than Tol3D / 100 so that it
+  // is not split up to the maximal number of segments when the first one used nearly all.
+  double aTol3D2 = Tol3D;
+  if (Tol3D > 0.0)
+  {
+    double anErr3D = 0.0, anErr2D = 0.0;
+    TheComputer.Error(anErr3D, anErr2D);
+    aTol3D2 = std::max(Tol3D - anErr3D, 0.01 * Tol3D);
+  }
+  AppDef_BSplineCompute
+    TheComputer2(DegMin, DegMax, aTol3D2, Tol2D, nbit, true, ParType, UseSquares);
   if (Tol3D <= 0.0)
   {
     if (thePeriodic)
@@ -606,7 +617,8 @@ void GeomAPI_PointsToBSplineSurface::Init(const NCollection_Array2<gp_Pnt>& Poin
   Variation2.SetContinuity(Continuity);
   Variation2.SetMaxSegment(theMaxSegments);
 
-  Variation2.SetTolerance(Tol3D);
+  // as in the other Init: the second pass takes the tolerance left by the first one
+  Variation2.SetTolerance(std::max(Tol3D - Variation.MaxError(), 0.01 * Tol3D));
   Variation2.SetWithMinMax(theWithMinMax);
   Variation2.SetNbIterations(nbit);
 
@@ -821,7 +833,15 @@ void GeomAPI_PointsToBSplineSurface::Init(const NCollection_Array2<double>& ZPoi
 
   // approximate the resulting poles:
 
-  AppDef_BSplineCompute TheComputer2(Param2, DegMin, DegMax, Tol3D, Tol2D, 0, true, true);
+  // as above: the second pass takes the tolerance left by the first one (2D errors: Z values)
+  double aTol2D2 = Tol2D;
+  if (Tol3D > 0.0)
+  {
+    double anErr3D = 0.0, anErr2D = 0.0;
+    TheComputer.Error(anErr3D, anErr2D);
+    aTol2D2 = std::max(Tol2D - anErr2D, 0.01 * Tol2D);
+  }
+  AppDef_BSplineCompute TheComputer2(Param2, DegMin, DegMax, Tol3D, aTol2D2, 0, true, true);
   if (Tol3D <= 0.0)
   {
     TheComputer2.Interpol(Line2);
