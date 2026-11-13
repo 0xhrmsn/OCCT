@@ -83,6 +83,8 @@ inline MathUtils::PolyResult Cubic(double theA, double theB, double theC, double
 
   // Store original coefficients for refinement
   const double aCoeffs[4] = {theD, theC, theB, theA};
+  // Derivative, to refine a double root (a simple root of the derivative)
+  const double aDerCoeffs[3] = {theC, 2.0 * theB, 3.0 * theA};
 
   if (aDisc > aDiscTol)
   {
@@ -98,6 +100,33 @@ inline MathUtils::PolyResult Cubic(double theA, double theB, double theC, double
 
     // Refine root
     aResult.Roots[0] = MathUtils::RefinePolyRoot(aCoeffs, 3, aResult.Roots[0]);
+
+    // A double root gives a zero discriminant that rounding can make slightly positive, beyond
+    // the tolerance above: (x-1)^2 (x-2) gave the root 2 only. The cubic divided by (x - root)
+    // is solved as a quadratic: complex roots stay complex, a double root is found again.
+    const double                aX0   = aResult.Roots[0];
+    const double                aB1   = aP + aX0;
+    const MathUtils::PolyResult aRest = Quadratic(1.0, aB1, aQ + aX0 * aB1);
+    for (size_t i = 0; aRest.IsDone() && i < aRest.NbRoots; ++i)
+    {
+      // a double root is a simple root of the derivative: Newton on the cubic converges slowly
+      const double aX = aRest.NbRoots == 1
+                          ? MathUtils::RefinePolyRoot(aDerCoeffs, 2, aRest.Roots[i])
+                          : MathUtils::RefinePolyRoot(aCoeffs, 3, aRest.Roots[i]);
+      if (std::abs(aX - aX0) > MathUtils::THE_ZERO_TOL * std::max(1.0, std::abs(aX0)))
+      {
+        aResult.Roots[aResult.NbRoots++] = aX;
+      }
+    }
+    MathUtils::SortRoots(aResult.Roots.data(), aResult.NbRoots);
+    // a double root seen as two close roots by the quadratic (rounding) is kept once
+    double aMaxAbs = 1.0;
+    for (size_t i = 0; i < aResult.NbRoots; ++i)
+    {
+      aMaxAbs = std::max(aMaxAbs, std::abs(aResult.Roots[i]));
+    }
+    aResult.NbRoots =
+      MathUtils::RemoveDuplicateRoots(aResult.Roots.data(), aResult.NbRoots, 1.0e-7 * aMaxAbs);
   }
   else if (aDisc < -aDiscTol)
   {
@@ -145,9 +174,9 @@ inline MathUtils::PolyResult Cubic(double theA, double theB, double theC, double
       aResult.Roots[0] = 2.0 * aU - aP3; // Single root
       aResult.Roots[1] = -aU - aP3;      // Double root
 
-      // Refine roots
+      // Refine roots; the double root is a simple root of the derivative
       aResult.Roots[0] = MathUtils::RefinePolyRoot(aCoeffs, 3, aResult.Roots[0]);
-      aResult.Roots[1] = MathUtils::RefinePolyRoot(aCoeffs, 3, aResult.Roots[1]);
+      aResult.Roots[1] = MathUtils::RefinePolyRoot(aDerCoeffs, 2, aResult.Roots[1]);
 
       // Sort roots
       if (aResult.Roots[0] > aResult.Roots[1])

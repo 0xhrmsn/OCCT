@@ -202,6 +202,27 @@ TEST(MathPoly_CubicTest, OneSimpleOneDouble)
   }
 }
 
+// A double root gives a zero discriminant; rounding made it slightly positive for
+// (x-1)^2 (x-2) and the double root 1 was lost. Each double root must be found.
+TEST(MathPoly_CubicTest, DoubleRootNotLostByRounding)
+{
+  const double aCases[][2] = {{1.0, 2.0}, {1.0, 3.0}, {-0.5, 7.0}, {0.1, 0.3}, {2.5, -4.0}};
+  for (const auto& aCase : aCases)
+  {
+    const double aD = aCase[0]; // double root
+    const double aS = aCase[1]; // simple root
+    // (x - d)^2 (x - s)
+    const double          aB = -(2.0 * aD + aS);
+    const double          aC = aD * aD + 2.0 * aD * aS;
+    const double          aE = -aD * aD * aS;
+    MathUtils::PolyResult aResult = MathPoly::Cubic(1.0, aB, aC, aE);
+    ASSERT_TRUE(aResult.IsDone());
+    ASSERT_EQ(aResult.NbRoots, 2u) << "double " << aD << " simple " << aS;
+    EXPECT_NEAR(aResult.Roots[0], std::min(aD, aS), 1.0e-7) << "double " << aD;
+    EXPECT_NEAR(aResult.Roots[1], std::max(aD, aS), 1.0e-7) << "double " << aD;
+  }
+}
+
 TEST(MathPoly_CubicTest, ReducesToQuadratic)
 {
   // 0*x^3 + x^2 - 5x + 6 = 0 -> roots: 2, 3
