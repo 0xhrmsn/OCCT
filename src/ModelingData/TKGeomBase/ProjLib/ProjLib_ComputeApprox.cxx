@@ -43,6 +43,10 @@
 #include <Geom2d_BezierCurve.hxx>
 #include <GCPnts_AbscissaPoint.hxx>
 
+#include <algorithm>
+#include <functional>
+#include <vector>
+
 #ifdef OCCT_DEBUG
 // static bool AffichValue = false;
 #endif
@@ -1487,6 +1491,68 @@ void ProjLib_ComputeApprox::Perform(const occ::handle<Adaptor3d_Curve>&   C,
         gp_Ax2d Axe(gp_Pnt2d(0., 0.), gp_Dir2d(gp_Dir2d::D::X));
         myBSpline->Mirror(Axe);
       }
+
+      // The tolerance above is the error at the fitting points, converted from 2D to 3D with an
+      // assumed ratio: between those points the curve on the surface deviated more (helix across
+      // the seam of a cylinder: 1e-7 reported, 8.3e-7 measured). The deviation from the 3D curve
+      // at the same parameter is measured, as for an edge with this curve on the surface.
+      const int    aNbSamples = std::min(std::max(20 * (myBSpline->NbKnots() - 1), 200), 2000);
+      const double aFirst     = myBSpline->FirstParameter();
+      const double aLast      = myBSpline->LastParameter();
+      const double aStep      = (aLast - aFirst) / aNbSamples;
+      const auto   aDistAt    = [&](const double thePar) {
+        const gp_Pnt2d aUV = myBSpline->Value(thePar);
+        return S->Value(aUV.X(), aUV.Y()).Distance(C->Value(thePar));
+      };
+      std::vector<double> aDists(aNbSamples + 1);
+      double              aMaxDist = 0.0;
+      for (int i = 0; i <= aNbSamples; ++i)
+      {
+        aDists[i] = aDistAt(aFirst + aStep * i);
+        aMaxDist  = std::max(aMaxDist, aDists[i]);
+      }
+      // the largest deviation lies between the samples: golden section search around the local
+      // maxima of the samples above half of the largest one (the 10 largest at most)
+      std::vector<std::pair<double, int>> aPeaks;
+      for (int i = 0; i <= aNbSamples; ++i)
+      {
+        if (aDists[i] >= 0.5 * aMaxDist && (i == 0 || aDists[i - 1] <= aDists[i])
+            && (i == aNbSamples || aDists[i + 1] <= aDists[i]))
+        {
+          aPeaks.emplace_back(aDists[i], i);
+        }
+      }
+      std::sort(aPeaks.begin(), aPeaks.end(), std::greater<std::pair<double, int>>());
+      aPeaks.resize(std::min<size_t>(aPeaks.size(), 10));
+      const double aRatio = 0.618033988749895;
+      for (const std::pair<double, int>& aPeak : aPeaks)
+      {
+        double aA  = aFirst + aStep * std::max(aPeak.second - 1, 0);
+        double aB  = aFirst + aStep * std::min(aPeak.second + 1, aNbSamples);
+        double aM1 = aB - aRatio * (aB - aA), aM2 = aA + aRatio * (aB - aA);
+        double aD1 = aDistAt(aM1), aD2 = aDistAt(aM2);
+        for (int k = 0; k < 30; ++k)
+        {
+          if (aD1 < aD2)
+          {
+            aA  = aM1;
+            aM1 = aM2;
+            aD1 = aD2;
+            aM2 = aA + aRatio * (aB - aA);
+            aD2 = aDistAt(aM2);
+          }
+          else
+          {
+            aB  = aM2;
+            aM2 = aM1;
+            aD2 = aD1;
+            aM1 = aB - aRatio * (aB - aA);
+            aD1 = aDistAt(aM1);
+          }
+        }
+        aMaxDist = std::max({aMaxDist, aD1, aD2});
+      }
+      myTolerance = std::max(myTolerance, 1.01 * aMaxDist);
     }
   }
 }

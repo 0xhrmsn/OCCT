@@ -54,6 +54,7 @@ set(OCCT_TKGeomBase_GTests_FILES
   ProjLib_ComputeApproxOnPolarSurface_Test.cxx
   ProjLib_CompProjectedCurve_Test.cxx
   ProjLib_ProjectionDerivative_Test.cxx
+  ProjLib_ComputeApprox_Test.cxx
   gce_MakeCone_Test.cxx
   gce_MakeCirc2d_Test.cxx
   gce_MakeCylinder_Test.cxx
