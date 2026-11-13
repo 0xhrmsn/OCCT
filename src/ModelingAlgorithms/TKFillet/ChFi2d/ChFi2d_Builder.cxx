@@ -20,6 +20,7 @@
 #include <BRepLib.hxx>
 #include <BRepLib_MakeEdge.hxx>
 #include <BRepLib_MakeFace.hxx>
+#include <BRepTools.hxx>
 #include <ChFi2d.hxx>
 #include <ChFi2d_Builder.hxx>
 #include <ElCLib.hxx>
@@ -461,9 +462,10 @@ TopoDS_Vertex ChFi2d_Builder::RemoveFillet(const TopoDS_Edge& theFillet)
     } // else if (lastVertex ...
   } // else ...
 
-  // rebuild the newFace
-  TopExp_Explorer Ex(newFace, TopAbs_EDGE);
-  TopoDS_Wire     newWire;
+  // rebuild the wire of the fillet in newFace; the other wires are kept
+  const TopoDS_Wire anOldWire = WireOf(Fillet);
+  TopExp_Explorer   Ex(anOldWire, TopAbs_EDGE);
+  TopoDS_Wire       newWire;
 
   BRep_Builder B;
   B.MakeWire(newWire);
@@ -488,10 +490,8 @@ TopoDS_Vertex ChFi2d_Builder::RemoveFillet(const TopoDS_Edge& theFillet)
     } // else
     Ex.Next();
   } // while ...
-  BRepAdaptor_Surface Adaptor3dSurface(refFace);
-  BRepLib_MakeFace    mFace(Adaptor3dSurface.Plane(), newWire);
-  newFace.Nullify();
-  newFace = mFace;
+  newWire.Closed(anOldWire.Closed());
+  newFace = RebuildFace(anOldWire, newWire);
 
   UpDateHistory(basisEdge1, basisEdge2, newEdge1, newEdge2);
 
@@ -540,20 +540,15 @@ void ChFi2d_Builder::BuildNewWire(const TopoDS_Edge& OldE1,
                                   const TopoDS_Edge& E2)
 {
 
-  bool aClosedStatus = true;
-
-  TopExp_Explorer Ex(refFace, TopAbs_WIRE);
-  while (Ex.More())
-  {
-    const TopoDS_Wire& aWire = TopoDS::Wire(Ex.Current());
-    aClosedStatus            = aWire.Closed();
-    break;
-  }
+  // only the wire of OldE1 and OldE2 is rebuilt: with a hole, all the edges of the face were put
+  // in one wire that was not connected
+  const TopoDS_Wire anOldWire     = WireOf(OldE1);
+  const bool        aClosedStatus = anOldWire.Closed();
 
   bool filletIsAdded = false;
 
-  Ex.Init(newFace, TopAbs_EDGE);
-  TopoDS_Wire  newWire;
+  TopExp_Explorer Ex(anOldWire, TopAbs_EDGE);
+  TopoDS_Wire     newWire;
   BRep_Builder B;
   B.MakeWire(newWire);
 
@@ -595,11 +590,45 @@ void ChFi2d_Builder::BuildNewWire(const TopoDS_Edge& OldE1,
   } // while ...
 
   newWire.Closed(aClosedStatus);
-  BRepAdaptor_Surface Adaptor3dSurface(refFace);
-  BRepLib_MakeFace    mFace(Adaptor3dSurface.Plane(), newWire);
-  newFace = mFace;
+  newFace = RebuildFace(anOldWire, newWire);
 
 } // BuildNewWire
+
+//=================================================================================================
+
+TopoDS_Wire ChFi2d_Builder::WireOf(const TopoDS_Edge& E) const
+{
+  for (TopExp_Explorer aWireExp(newFace, TopAbs_WIRE); aWireExp.More(); aWireExp.Next())
+  {
+    for (TopExp_Explorer anEdgeExp(aWireExp.Current(), TopAbs_EDGE); anEdgeExp.More();
+         anEdgeExp.Next())
+    {
+      if (anEdgeExp.Current().IsSame(E))
+      {
+        return TopoDS::Wire(aWireExp.Current());
+      }
+    }
+  }
+  return TopoDS_Wire();
+}
+
+//=================================================================================================
+
+TopoDS_Face ChFi2d_Builder::RebuildFace(const TopoDS_Wire& OldW, const TopoDS_Wire& NewW) const
+{
+  const TopoDS_Wire   anOuter = BRepTools::OuterWire(newFace);
+  BRepAdaptor_Surface Adaptor3dSurface(refFace);
+  BRepLib_MakeFace    mFace(Adaptor3dSurface.Plane(), anOuter.IsSame(OldW) ? NewW : anOuter);
+  for (TopExp_Explorer aWireExp(newFace, TopAbs_WIRE); aWireExp.More(); aWireExp.Next())
+  {
+    const TopoDS_Wire& aWire = TopoDS::Wire(aWireExp.Current());
+    if (!aWire.IsSame(anOuter))
+    {
+      mFace.Add(aWire.IsSame(OldW) ? NewW : aWire);
+    }
+  }
+  return mFace.Face();
+}
 
 //=================================================================================================
 

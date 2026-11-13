@@ -486,9 +486,10 @@ TopoDS_Vertex ChFi2d_Builder::RemoveChamfer(const TopoDS_Edge& theChamfer)
     } // else if (lastVertex ...
   } // else ...
 
-  // rebuild the newFace
-  TopExp_Explorer Ex(newFace, TopAbs_EDGE);
-  TopoDS_Wire     newWire;
+  // rebuild the wire of the chamfer in newFace; the other wires are kept
+  const TopoDS_Wire anOldWire = WireOf(Chamfer);
+  TopExp_Explorer   Ex(anOldWire, TopAbs_EDGE);
+  TopoDS_Wire       newWire;
 
   BRep_Builder B;
   B.MakeWire(newWire);
@@ -513,11 +514,8 @@ TopoDS_Vertex ChFi2d_Builder::RemoveChamfer(const TopoDS_Edge& theChamfer)
     } // else
     Ex.Next();
   } // while ...
-
-  BRepAdaptor_Surface Adaptor3dSurface(refFace);
-  BRepLib_MakeFace    mFace(Adaptor3dSurface.Plane(), newWire);
-  newFace.Nullify();
-  newFace = mFace;
+  newWire.Closed(anOldWire.Closed());
+  newFace = RebuildFace(anOldWire, newWire);
 
   UpDateHistory(basisEdge1, basisEdge2, newEdge1, newEdge2);
 

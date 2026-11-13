@@ -15,6 +15,7 @@
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
 #include <BRepBuilderAPI_MakeWire.hxx>
+#include <BRepCheck_Analyzer.hxx>
 #include <BRepFilletAPI_MakeFillet2d.hxx>
 #include <gp.hxx>
 #include <gp_Ax2.hxx>
@@ -560,6 +561,49 @@ TEST(BRepFilletAPI_MakeFillet2dTest, FaceWithHole_HoleKept)
   EXPECT_TRUE(shapesOf(aFillet.Shape(), TopAbs_EDGE).Contains(aCircle));
   EXPECT_TRUE(aFillet.Modified(aCircle).IsEmpty());
   EXPECT_FALSE(aFillet.IsDeleted(aCircle));
+  // the edges of the hole were put in the same wire as the outer contour: IsDone, but the wire
+  // was not connected (BRepCheck_NotConnected)
+  EXPECT_TRUE(BRepCheck_Analyzer(aFillet.Shape()).IsValid());
+  EXPECT_EQ(shapesOf(aFillet.Shape(), TopAbs_WIRE).Extent(), 2);
+}
+
+// Corner of a square hole filleted, then a chamfer added on the outer contour and removed: the
+// outer contour and the hole stay two separate wires.
+TEST(BRepFilletAPI_MakeFillet2dTest, FaceWithSquareHole_HoleCornerFilleted)
+{
+  BRepBuilderAPI_MakeFace    aMakeFace(rectangle(30, 20));
+  BRepBuilderAPI_MakePolygon aSquare(gp_Pnt(10, 5, 0),
+                                     gp_Pnt(10, 15, 0),
+                                     gp_Pnt(20, 15, 0),
+                                     gp_Pnt(20, 5, 0),
+                                     true);
+  aMakeFace.Add(aSquare.Wire());
+  const TopoDS_Face aFace = aMakeFace.Face();
+  ASSERT_TRUE(BRepCheck_Analyzer(aFace).IsValid());
+
+  BRepFilletAPI_MakeFillet2d aFillet(aFace);
+  aFillet.AddFillet(vertexAt(aFace, gp_Pnt(20, 15, 0)), 2.0);
+  const TopoDS_Edge aChamfer = aFillet.AddChamfer(edgeThrough(aFace, gp_Pnt(15, 0, 0)),
+                                                  edgeThrough(aFace, gp_Pnt(30, 10, 0)),
+                                                  1.0,
+                                                  1.0);
+  ASSERT_FALSE(aChamfer.IsNull());
+  aFillet.Build();
+  ASSERT_TRUE(aFillet.IsDone());
+  EXPECT_TRUE(BRepCheck_Analyzer(aFillet.Shape()).IsValid());
+  EXPECT_EQ(shapesOf(aFillet.Shape(), TopAbs_WIRE).Extent(), 2);
+
+  EXPECT_FALSE(aFillet.RemoveChamfer(aChamfer).IsNull());
+  aFillet.Build();
+  ASSERT_TRUE(aFillet.IsDone());
+  EXPECT_TRUE(BRepCheck_Analyzer(aFillet.Shape()).IsValid());
+  EXPECT_EQ(shapesOf(aFillet.Shape(), TopAbs_WIRE).Extent(), 2);
+  ASSERT_EQ(aFillet.NbFillet(), 1);
+  EXPECT_FALSE(aFillet.RemoveFillet(TopoDS::Edge(aFillet.FilletEdges().Value(1))).IsNull());
+  aFillet.Build();
+  ASSERT_TRUE(aFillet.IsDone());
+  EXPECT_TRUE(BRepCheck_Analyzer(aFillet.Shape()).IsValid());
+  EXPECT_EQ(shapesOf(aFillet.Shape(), TopAbs_WIRE).Extent(), 2);
 }
 
 // Resuming on a face modified earlier: the new fillet is generated from its corner; the fillet

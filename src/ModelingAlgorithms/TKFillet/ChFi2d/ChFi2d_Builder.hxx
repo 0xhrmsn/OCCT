@@ -30,6 +30,7 @@
 
 class TopoDS_Edge;
 class TopoDS_Vertex;
+class TopoDS_Wire;
 
 // resolve name collisions with X11 headers
 #ifdef Status
@@ -267,6 +268,14 @@ private:
                                      const TopoDS_Edge& E2,
                                      const TopoDS_Edge& TrimE1,
                                      const TopoDS_Edge& TrimE2);
+
+  //! Returns the wire of <newFace> containing <E>.
+  TopoDS_Wire WireOf(const TopoDS_Edge& E) const;
+
+  //! Returns a face on the plane of <refFace> bounded by the wires of
+  //! <newFace>, <OldW> being replaced by <NewW>. The other wires (holes,
+  //! or the outer contour when <OldW> is a hole) are kept as they are.
+  TopoDS_Face RebuildFace(const TopoDS_Wire& OldW, const TopoDS_Wire& NewW) const;
 
   Standard_EXPORT bool IsAFillet(const TopoDS_Edge& E) const;
 
