@@ -1357,9 +1357,16 @@ void BRepGProp_Gauss::Compute(BRepGProp_Face&   theSurface,
     math::GaussPoints(aNbLPnts, aLP);
     math::GaussWeights(aNbLPnts, aLW);
 
-    // Inner rule along U: per span of the surface, otherwise the single rule as before
+    // Inner rule along U: per span of the surface, otherwise the single rule as before. The
+    // spans share at least the order along U, not only the order along the curve or V, which
+    // left 9 points to each of the two spans of an offset face. This applies to every surface
+    // with spans: a span never gets fewer points than before.
     const int aNbUPnts =
-      aUSpans.IsNull() ? aNbGaussgp_Pnts : spanOrder(aNbGaussgp_Pnts, aUSpans->Length() - 1);
+      aUSpans.IsNull()
+        ? aNbGaussgp_Pnts
+        : spanOrder(std::max(aNbGaussgp_Pnts,
+                             std::min(theSurface.UIntegrationOrder(), math::GaussPointsMax())),
+                    aUSpans->Length() - 1);
     math_Vector aUP(1, aNbUPnts);
     math_Vector aUW(1, aNbUPnts);
     math::GaussPoints(aNbUPnts, aUP);

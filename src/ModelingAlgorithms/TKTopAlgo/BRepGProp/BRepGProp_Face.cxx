@@ -67,6 +67,14 @@ int BRepGProp_Face::UIntegrationOrder() const
     }
     break;
 
+    case GeomAbs_OffsetSurface:
+      // not polynomial: the order of a whole surface for each span of the basis, so that the
+      // span by span rule does not thin it out (an offset face of Draw offset/faces_type_i/L4 in
+      // two spans got 9 points per span). The callers cap the order at math::GaussPointsMax()
+      // before splitting it, so with many spans each one still gets at least 8 points.
+      Nu = 9 * std::max(1, mySurface.NbUIntervals(GeomAbs_CN));
+      break;
+
     default:
       Nu = 9;
       break;
@@ -102,6 +110,10 @@ int BRepGProp_Face::VIntegrationOrder() const
       Nv = std::max(4, a * b);
     }
     break;
+
+    case GeomAbs_OffsetSurface:
+      Nv = 9 * std::max(1, mySurface.NbVIntervals(GeomAbs_CN));
+      break;
 
     default:
       Nv = 9;
@@ -263,6 +275,15 @@ int BRepGProp_Face::SIntOrder(const double Eps) const
       Nv = (*(occ::handle<Geom_BSplineSurface>*)&mySurface.GeomSurfaceOriginal())->VDegree();
       Nu = (*(occ::handle<Geom_BSplineSurface>*)&mySurface.GeomSurfaceOriginal())->UDegree();
       break;
+    case GeomAbs_OffsetSurface:
+      // smooth by spans but not polynomial, and the integration with a tolerance does not
+      // subdivide along U: the order alone carries the accuracy there (offset face of
+      // offset/faces_type_i/L4, per span: 4 points 4.5 % off, 16 points 1e-4, 24 points 1e-6,
+      // 32 points 1e-8). The order grows with the tolerance asked: 20 points for 1e-4, 38 for
+      // 1e-12.
+      Nu = 15;
+      Nv = 15;
+      break;
     default:
       Nu = 2;
       Nv = 2;
@@ -302,7 +323,8 @@ int BRepGProp_Face::SUIntSubs() const
       break;
     case GeomAbs_SurfaceOfExtrusion:
     case GeomAbs_SurfaceOfRevolution:
-      // spans of the basis curve
+    case GeomAbs_OffsetSurface:
+      // spans of the basis curve (of the basis surface for an offset: its smoothness breaks)
       N = mySurface.NbUIntervals(GeomAbs_CN) + 1;
       break;
     default:
@@ -342,7 +364,8 @@ int BRepGProp_Face::SVIntSubs() const
       break;
     case GeomAbs_SurfaceOfExtrusion:
     case GeomAbs_SurfaceOfRevolution:
-      // spans of the basis curve
+    case GeomAbs_OffsetSurface:
+      // spans of the basis curve (of the basis surface for an offset: its smoothness breaks)
       N = mySurface.NbVIntervals(GeomAbs_CN) + 1;
       break;
     default:
@@ -382,6 +405,7 @@ void BRepGProp_Face::UKnots(NCollection_Array1<double>& Knots) const
     break;
     case GeomAbs_SurfaceOfExtrusion:
     case GeomAbs_SurfaceOfRevolution:
+    case GeomAbs_OffsetSurface:
       mySurface.UIntervals(Knots, GeomAbs_CN);
       break;
     default:
@@ -425,6 +449,7 @@ void BRepGProp_Face::VKnots(NCollection_Array1<double>& Knots) const
     break;
     case GeomAbs_SurfaceOfExtrusion:
     case GeomAbs_SurfaceOfRevolution:
+    case GeomAbs_OffsetSurface:
       mySurface.VIntervals(Knots, GeomAbs_CN);
       break;
     default:
@@ -438,11 +463,11 @@ void BRepGProp_Face::VKnots(NCollection_Array1<double>& Knots) const
 
 static bool isPiecewiseSurface(const GeomAbs_SurfaceType theType)
 {
-  // polynomial (or rational) by spans: BSpline surface, or a surface swept by a BSpline curve.
-  // Not an offset surface: the integration also covers its part outside the face, where it may
-  // be nearly singular, and a split by spans of the basis was found to be less accurate there.
+  // polynomial (or rational) by spans: BSpline surface, or a surface swept by a BSpline curve;
+  // smooth by spans: offset of such a surface (an offset of an extrusion of a periodic BSpline
+  // with 8 spans, one rule of 18 points over all of them: area 4 % off).
   return theType == GeomAbs_BSplineSurface || theType == GeomAbs_SurfaceOfExtrusion
-         || theType == GeomAbs_SurfaceOfRevolution;
+         || theType == GeomAbs_SurfaceOfRevolution || theType == GeomAbs_OffsetSurface;
 }
 
 //=================================================================================================

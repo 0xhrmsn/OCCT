@@ -44,6 +44,10 @@
 #include <gp_Pnt2d.hxx>
 #include <GProp_GProps.hxx>
 #include <GProp_PrincipalProps.hxx>
+#include <BRepBuilderAPI_MakePolygon.hxx>
+#include <BRepOffsetAPI_MakeThickSolid.hxx>
+#include <Geom_OffsetSurface.hxx>
+#include <NCollection_List.hxx>
 #include <NCollection_Array1.hxx>
 #include <Precision.hxx>
 #include <Standard_Handle.hxx>
@@ -546,4 +550,107 @@ TEST(BRepGPropTest, VolumeRelativeToPlane_Gauss)
   BRepGProp::VolumePropertiesGK(aBox, aProps, aPlane, 0.001, false, false, true);
   EXPECT_NEAR(aProps.Mass(), 6000.0, 1e-6);
   EXPECT_NEAR((aMoment / aMass - aProps.CentreOfMass().XYZ()).Modulus(), 0.0, 1e-6);
+}
+
+// Offset of an extrusion of a periodic B-spline with 8 spans (curve of Draw bugs/modalg_2/
+// bug5805_21): one Gauss rule of 18 points over the 8 spans gave an area 4 % too large.
+TEST(BRepGPropTest, OffsetOfManySpanSurface_Area)
+{
+  NCollection_Array1<gp_Pnt> aPoles(1, 8);
+  aPoles(1) = gp_Pnt(-1, 0, 0);
+  aPoles(2) = gp_Pnt(-2, 2, 0);
+  aPoles(3) = gp_Pnt(0, 1, 0);
+  aPoles(4) = gp_Pnt(2, 2, 0);
+  aPoles(5) = gp_Pnt(1, 0, 0);
+  aPoles(6) = gp_Pnt(2, -2, 0);
+  aPoles(7) = gp_Pnt(0, -1, 0);
+  aPoles(8) = gp_Pnt(-2, -2, 0);
+  NCollection_Array1<double> aKnots(1, 9);
+  NCollection_Array1<int>    aMults(1, 9);
+  for (int i = 1; i <= 9; ++i)
+  {
+    aKnots(i) = i - 1.0;
+    aMults(i) = 1;
+  }
+  const occ::handle<Geom_BSplineCurve> aCurve =
+    new Geom_BSplineCurve(aPoles, aKnots, aMults, 3, true);
+  const occ::handle<Geom_OffsetSurface> anOffset =
+    new Geom_OffsetSurface(new Geom_SurfaceOfLinearExtrusion(aCurve, gp_Dir(0, 0, 1)), 0.1);
+  const TopoDS_Face aFace = BRepBuilderAPI_MakeFace(anOffset, 0.0, 8.0, 0.0, 20.0, 1e-7).Face();
+
+  // reference: midpoint rule on 8000 x 4 cells (the surface is straight along V)
+  const int aNU = 8000, aNV = 4;
+  double    anArea = 0.0;
+  for (int i = 0; i < aNU; ++i)
+  {
+    for (int j = 0; j < aNV; ++j)
+    {
+      gp_Pnt aP;
+      gp_Vec aDu, aDv;
+      anOffset->D1(8.0 * (i + 0.5) / aNU, 20.0 * (j + 0.5) / aNV, aP, aDu, aDv);
+      anArea += aDu.Crossed(aDv).Magnitude() * (8.0 / aNU) * (20.0 / aNV);
+    }
+  }
+
+  GProp_GProps aProps, aWithTol;
+  BRepGProp::SurfaceProperties(aFace, aProps);
+  EXPECT_NEAR(aProps.Mass(), anArea, 1e-4 * anArea);
+  BRepGProp::SurfaceProperties(aFace, aWithTol, 1e-6);
+  EXPECT_NEAR(aWithTol.Mass(), anArea, 1e-4 * anArea);
+}
+
+// Thick solid of Draw offset/faces_type_i/L4 (prism of a B-spline and a polyline, two faces
+// removed, offset -1): its offset face is cut in two spans, a short one outside the range of the
+// curve. The span by span volume took the number of points along U from V and left 9 points to
+// the long span (0.0227 off the adaptive volume before, 0.0075 after).
+TEST(BRepGPropTest, ThickSolidWithOffsetFace_Volume)
+{
+  NCollection_Array1<gp_Pnt> aPoles(1, 4);
+  aPoles(1) = gp_Pnt(0, 0, 0);
+  aPoles(2) = gp_Pnt(2, 10, 0);
+  aPoles(3) = gp_Pnt(4, 6, 0);
+  aPoles(4) = gp_Pnt(10, 0, 0);
+  NCollection_Array1<double> aKnots(1, 2);
+  NCollection_Array1<int>    aMults(1, 2);
+  aKnots(1) = -1.0;
+  aKnots(2) = 1.0;
+  aMults(1) = 4;
+  aMults(2) = 4;
+  BRepBuilderAPI_MakeWire aWire;
+  aWire.Add(BRepBuilderAPI_MakeEdge(new Geom_BSplineCurve(aPoles, aKnots, aMults, 3)).Edge());
+  aWire.Add(
+    BRepBuilderAPI_MakePolygon(gp_Pnt(10, 0, 0), gp_Pnt(3, -5, 0), gp_Pnt(0, 0, 0)).Wire());
+  const TopoDS_Shape aPrism =
+    BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(aWire.Wire(), true).Face(), gp_Vec(0, 0, 10))
+      .Shape();
+
+  NCollection_List<TopoDS_Shape> aRemoved;
+  int                            anIndex = 0;
+  for (TopExp_Explorer anExp(aPrism, TopAbs_FACE); anExp.More(); anExp.Next())
+  {
+    ++anIndex;
+    if (anIndex == 2 || anIndex == 3)
+    {
+      aRemoved.Append(anExp.Current());
+    }
+  }
+  BRepOffsetAPI_MakeThickSolid aMaker;
+  aMaker.MakeThickSolidByJoin(aPrism,
+                              aRemoved,
+                              -1.0,
+                              1e-7,
+                              BRepOffset_Skin,
+                              true,
+                              false,
+                              GeomAbs_Intersection);
+  ASSERT_TRUE(aMaker.IsDone());
+
+  GProp_GProps aGauss, anAdaptive, aWithTol;
+  BRepGProp::VolumeProperties(aMaker.Shape(), aGauss);
+  BRepGProp::VolumePropertiesGK(aMaker.Shape(), anAdaptive, 1e-9);
+  ASSERT_GT(anAdaptive.Mass(), 200.0);
+  EXPECT_NEAR(aGauss.Mass(), anAdaptive.Mass(), 0.012);
+  // With a tolerance (as checkprops): 4 points along U on the offset face gave 246.795.
+  BRepGProp::VolumeProperties(aMaker.Shape(), aWithTol, 1e-4);
+  EXPECT_NEAR(aWithTol.Mass(), anAdaptive.Mass(), 1e-4 * anAdaptive.Mass());
 }
