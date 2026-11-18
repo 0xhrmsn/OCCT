@@ -31,6 +31,7 @@
 #include <GeomInt_WLApprox.hxx>
 #include <GeomLib_Check2dBSplineCurve.hxx>
 #include <GeomLib_CheckBSplineCurve.hxx>
+#include <GeomProjLib.hxx>
 #include <Geom_BSplineCurve.hxx>
 #include <Geom_Circle.hxx>
 #include <Geom_Ellipse.hxx>
@@ -146,6 +147,8 @@ static double PolylineDeviation(const occ::handle<IntPatch_WLine>&      theWL,
                                 const TopoDS_Face&                      theF1,
                                 const TopoDS_Face&                      theF2,
                                 const occ::handle<IntTools_Context>&    theContext);
+
+static bool HasPole(const TopoDS_Face& theFace);
 
 //=================================================================================================
 
@@ -669,6 +672,65 @@ void IntTools_FaceFace::ComputeTolReached3d(const bool theToRunParallel)
                                              Precision::PConfusion(),
                                              theToRunParallel))
         {
+          // A 2D curve can deviate much more than the 3D curve is from its surface near a pole:
+          // the parameters of the walking points change fast and the 2D curve cuts across them
+          // (0.02 against 0.002). Then the projection of the 3D curve is kept if it is closer.
+          // Only 2D curves off by more than 1e-4 on a face with a pole (a degenerated edge) are
+          // checked: elsewhere the curve is used as computed (a projected 2D curve on an offset
+          // face without pole made the offset of bug25940 fail).
+          const double       aTolCheck = 1.e-4;
+          const TopoDS_Face& aF        = !j ? myFace1 : myFace2;
+          const bool         aHasPole  = aD > aTolCheck && HasPole(aF);
+          const double       aD3D =
+            aHasPole ? FindMaxDistance(aC3D, aFirst, aLast, aF, myContext) : aD;
+          if (aHasPole && aD > 10. * aD3D)
+          {
+            double aUMin, aUMax, aVMin, aVMax;
+            myContext->UVBounds(aF, aUMin, aUMax, aVMin, aVMax);
+            double                    aTolProj = Precision::Confusion();
+            occ::handle<Geom2d_Curve> aC2DProj =
+              GeomProjLib::Curve2d(aC3D, aFirst, aLast, aS, aUMin, aUMax, aVMin, aVMax, aTolProj);
+            if (!aC2DProj.IsNull())
+            {
+              // the same period as the 2D curve of the intersection
+              const gp_Pnt2d aP0 = aC2D->Value(aFirst), aP0Proj = aC2DProj->Value(aFirst);
+              gp_Vec2d       aShift(0., 0.);
+              if (aS->IsUPeriodic())
+              {
+                aShift.SetX(aS->UPeriod() * std::round((aP0.X() - aP0Proj.X()) / aS->UPeriod()));
+              }
+              if (aS->IsVPeriodic())
+              {
+                aShift.SetY(aS->VPeriod() * std::round((aP0.Y() - aP0Proj.Y()) / aS->VPeriod()));
+              }
+              if (aShift.SquareMagnitude() > 0.)
+              {
+                aC2DProj->Translate(aShift);
+              }
+              double aDProj, aTProj;
+              if (IntTools_Tools::ComputeTolerance(aC3D,
+                                                   aC2DProj,
+                                                   aS,
+                                                   aFirst,
+                                                   aLast,
+                                                   aDProj,
+                                                   aTProj,
+                                                   Precision::PConfusion(),
+                                                   theToRunParallel)
+                  && aDProj < aD)
+              {
+                aD = aDProj;
+                if (!j)
+                {
+                  aIC.SetFirstCurve2d(aC2DProj);
+                }
+                else
+                {
+                  aIC.SetSecondCurve2d(aC2DProj);
+                }
+              }
+            }
+          }
           if (aD > aTolC)
           {
             aTolC = aD;
@@ -1401,6 +1463,7 @@ reapprox:;
             theapp3d.Perform(myHS1, myHS2, WL, true, anApprox1, anApprox2, ifprm, ilprm);
           }
           //
+          const int aNbCurvesBefore = mySeqOfCurve.Length();
           if (!theapp3d.IsDone())
           {
             occ::handle<Geom2d_BSplineCurve> H1;
@@ -1757,6 +1820,62 @@ reapprox:;
                 }
                 //
                 mySeqOfCurve.Append(aCurve);
+              }
+            }
+          }
+          // The approximation can deviate from the surfaces much more than the walking line itself
+          // (e.g. a line passing close to the pole of a sphere: 0.15 against 0.003). Then the
+          // polyline through the walking points is kept instead. Only gross deviations (above
+          // 1e-4) lead to the replacement, so that a smooth curve within that is never replaced by
+          // a polyline. The deviation is searched for, not sampled: near a pole it is local (0.65
+          // missed by 21 samples on a closed curve). The search is made only when a face has a
+          // pole: for every curve it made a fuse of two lofts 33 times slower (0.74 s to 24.5 s).
+          if (theapp3d.IsDone() && mySeqOfCurve.Length() > aNbCurvesBefore
+              && (HasPole(myFace1) || HasPole(myFace2)))
+          {
+            const double aTolCheck  = 1.e-4;
+            double       aDevApprox = 0.;
+            for (int k = aNbCurvesBefore + 1; k <= mySeqOfCurve.Length(); ++k)
+            {
+              const occ::handle<Geom_Curve>& aC = mySeqOfCurve(k).Curve();
+              if (aC.IsNull())
+              {
+                continue;
+              }
+              for (int iF = 0; iF < 2; ++iF)
+              {
+                aDevApprox = std::max(aDevApprox,
+                                      FindMaxDistance(aC,
+                                                      aC->FirstParameter(),
+                                                      aC->LastParameter(),
+                                                      !iF ? myFace1 : myFace2,
+                                                      myContext));
+              }
+            }
+            const double aDevPoly =
+              aDevApprox > aTolCheck
+                ? PolylineDeviation(WL, ifprm, ilprm, myHS1, myHS2, myFace1, myFace2, myContext)
+                : 0.;
+            // the polyline is used under the same condition as where the approximation fails
+            // above: its 2D curves within the faces
+            if (aDevApprox > aTolCheck && aDevApprox > 10. * aDevPoly)
+            {
+              occ::handle<Geom2d_BSplineCurve> H1, H2;
+              if (myApprox1)
+              {
+                H1 = GeomInt_IntSS::MakeBSpline2d(WL, ifprm, ilprm, true);
+              }
+              if (myApprox2)
+              {
+                H2 = GeomInt_IntSS::MakeBSpline2d(WL, ifprm, ilprm, false);
+              }
+              if ((H1.IsNull() || CheckPCurve(H1, myFace1, myContext))
+                  && (H2.IsNull() || CheckPCurve(H2, myFace2, myContext)))
+              {
+                mySeqOfCurve.Remove(aNbCurvesBefore + 1, mySeqOfCurve.Length());
+                IntTools_Curve aIC(GeomInt_IntSS::MakeBSpline(WL, ifprm, ilprm), H1, H2);
+                aIC.SetTolerance(std::max(aTolC, aDevPoly));
+                mySeqOfCurve.Append(aIC);
               }
             }
           }
@@ -2918,6 +3037,22 @@ int IndexType(const GeomAbs_SurfaceType aType)
     aIndex = 10;
   }
   return aIndex;
+}
+
+//=======================================================================
+// function : HasPole
+// purpose  : The face has a pole: one of its edges is degenerated
+//=======================================================================
+bool HasPole(const TopoDS_Face& theFace)
+{
+  for (TopExp_Explorer anExp(theFace, TopAbs_EDGE); anExp.More(); anExp.Next())
+  {
+    if (BRep_Tool::Degenerated(TopoDS::Edge(anExp.Current())))
+    {
+      return true;
+    }
+  }
+  return false;
 }
 
 //=======================================================================
