@@ -22,6 +22,36 @@
 #include <GeomAbs_SurfaceType.hxx>
 #include <Standard_OutOfRange.hxx>
 #include <StdFail_NotDone.hxx>
+#include <Precision.hxx>
+
+#include <cmath>
+
+namespace
+{
+// The minimization in Extrema_GenExtSS is not bounded: on a sphere it can end beyond a pole
+// (V < -PI/2 or V > PI/2), at a valid point that is then rejected as out of the domain. The same
+// point has the parameters (U + PI, -PI - V), respectively (U + PI, PI - V). A point at the pole
+// within the parameter tolerance is left as it is (on a face trimmed in U the turn by PI would
+// put it out of the face).
+void foldOverPole(const Adaptor3d_Surface& theS, double& theU, double& theV)
+{
+  if (theS.GetType() != GeomAbs_Sphere)
+  {
+    return;
+  }
+  const double aV = std::remainder(theV, 2. * M_PI);
+  if (aV < -M_PI_2 - Precision::PConfusion())
+  {
+    theV = -M_PI - aV;
+    theU += M_PI;
+  }
+  else if (aV > M_PI_2 + Precision::PConfusion())
+  {
+    theV = M_PI - aV;
+    theU += M_PI;
+  }
+}
+} // namespace
 
 Extrema_ExtSS::Extrema_ExtSS()
     : myS2(nullptr),
@@ -142,6 +172,8 @@ void Extrema_ExtSS::Perform(const Adaptor3d_Surface& S1,
               PS2 = Ext.PointOnS2(i);
               PS1.Parameter(U1, V1);
               PS2.Parameter(U2, V2);
+              foldOverPole(S1, U1, V1);
+              foldOverPole(*myS2, U2, V2);
               if (S1.IsUPeriodic())
               {
                 U1 = ElCLib::InPeriod(U1, myuinf1, myuinf1 + S1.UPeriod());
@@ -191,6 +223,8 @@ void Extrema_ExtSS::Perform(const Adaptor3d_Surface& S1,
           PS2 = Ext.PointOnS2(i);
           PS1.Parameter(U1, V1);
           PS2.Parameter(U2, V2);
+          foldOverPole(S1, U1, V1);
+          foldOverPole(*myS2, U2, V2);
           if (S1.IsUPeriodic())
           {
             U1 = ElCLib::InPeriod(U1, myuinf1, myuinf1 + S1.UPeriod());

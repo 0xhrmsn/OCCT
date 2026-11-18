@@ -29,6 +29,17 @@
 #include <TopoDS_Edge.hxx>
 #include <TopoDS_Face.hxx>
 #include <TopoDS_Vertex.hxx>
+#include <BRepBuilderAPI_MakeWire.hxx>
+#include <BRepPrimAPI_MakeRevol.hxx>
+#include <GC_MakeArcOfCircle.hxx>
+#include <GeomAPI_PointsToBSplineSurface.hxx>
+#include <GeomAPI_ProjectPointOnSurf.hxx>
+#include <Geom_BSplineSurface.hxx>
+#include <NCollection_Array2.hxx>
+#include <TopLoc_Location.hxx>
+#include <gp_Trsf.hxx>
+
+#include <cmath>
 
 //=================================================================================================
 
@@ -91,4 +102,59 @@ TEST(BRepExtrema_DistShapeShapeTest, EdgeFace_Null3DCurve_NoCrash)
 
   BRepExtrema_DistShapeShape aDist(aEdge, aFace, 10.0);
   (void)aDist;
+}
+
+// A ball end mill (spherical face with its pole at the tip) over a wavy B-spline face. The
+// minimization between the faces ended beyond the pole (V < -PI/2) at the right point, which was
+// rejected as out of the face: the distance came from the tip vertex (0.177 instead of 0.097),
+// and a ball sunk into the face was found apart from it.
+TEST(BRepExtrema_DistShapeShapeTest, BallOverBSpline_MinimumBeyondPoleKept)
+{
+  NCollection_Array2<gp_Pnt> aPnts(1, 81, 1, 81);
+  for (int i = 1; i <= 81; ++i)
+  {
+    for (int j = 1; j <= 81; ++j)
+    {
+      const double x = i - 1.0, y = j - 1.0;
+      aPnts(i, j) = gp_Pnt(x, y, 2.0 * std::sin(2 * M_PI * x / 40) * std::cos(2 * M_PI * y / 40));
+    }
+  }
+  GeomAPI_PointsToBSplineSurface anInterp;
+  anInterp.Interpolate(aPnts);
+  const occ::handle<Geom_BSplineSurface> aSurf = anInterp.Surface();
+  const TopoDS_Face aWave = BRepBuilderAPI_MakeFace(aSurf, 1e-7).Face();
+
+  const double            R = 3.0, H = 20.0;
+  BRepBuilderAPI_MakeWire aWire;
+  aWire.Add(BRepBuilderAPI_MakeEdge(GC_MakeArcOfCircle(gp_Pnt(0, 0, 0),
+                                                       gp_Pnt(R * std::sin(M_PI / 4),
+                                                              0,
+                                                              R - R * std::cos(M_PI / 4)),
+                                                       gp_Pnt(R, 0, R))
+                                      .Value())
+              .Edge());
+  aWire.Add(BRepBuilderAPI_MakeEdge(gp_Pnt(R, 0, R), gp_Pnt(R, 0, H)).Edge());
+  aWire.Add(BRepBuilderAPI_MakeEdge(gp_Pnt(R, 0, H), gp_Pnt(0, 0, H)).Edge());
+  aWire.Add(BRepBuilderAPI_MakeEdge(gp_Pnt(0, 0, H), gp_Pnt(0, 0, 0)).Edge());
+  const TopoDS_Shape aTool =
+    BRepPrimAPI_MakeRevol(BRepBuilderAPI_MakeFace(aWire.Wire(), true).Face(),
+                          gp_Ax1(gp::Origin(), gp::DZ()))
+      .Shape();
+
+  // tip above the face: distance = distance of the center of the ball to the face - R
+  // tip sunk 0.1 into the face: distance 0
+  const gp_Pnt aTipAbove(36.875, 55.740740740740733, 0.92181643685826242);
+  const gp_Pnt aTipSunk(58.75, 42.777777777777779, 0.36741863926080243);
+  for (const gp_Pnt& aTip : {aTipAbove, aTipSunk})
+  {
+    gp_Trsf aTrsf;
+    aTrsf.SetTranslation(gp_Vec(aTip.XYZ()));
+    BRepExtrema_DistShapeShape aDist(aTool.Located(TopLoc_Location(aTrsf)), aWave);
+    ASSERT_TRUE(aDist.IsDone());
+
+    GeomAPI_ProjectPointOnSurf aProj(gp_Pnt(aTip.X(), aTip.Y(), aTip.Z() + R), aSurf);
+    ASSERT_GT(aProj.NbPoints(), 0);
+    const double anExpected = std::max(0.0, aProj.LowerDistance() - R);
+    EXPECT_NEAR(aDist.Value(), anExpected, 1e-6) << "tip " << aTip.X() << " " << aTip.Y();
+  }
 }
