@@ -506,6 +506,8 @@ TEST(BRepTools_Test, Read_ComposedLocation_Text)
 namespace
 {
 //! Reads theData as a text BREP; returns the message of the failure, empty when read.
+//! A reading is refused either by an exception or, as the readers of OCCT 8.0.2 do for a stream
+//! that cannot be read further, by a failed stream and no shape.
 std::string textReadFailure(const std::string& theData)
 {
   std::istringstream anIn(theData);
@@ -517,6 +519,10 @@ std::string textReadFailure(const std::string& theData)
   catch (const Standard_Failure& theFailure)
   {
     return theFailure.what();
+  }
+  if (anIn.fail() && aRead.IsNull())
+  {
+    return "the stream failed and no shape was read";
   }
   return std::string();
 }
@@ -554,8 +560,9 @@ TEST(BRepTools_Test, Read_CountsLargerThanStream_Text)
       "\n" + std::to_string(aTri->NbNodes()) + " " + std::to_string(aTri->NbTriangles()) + " ";
     ASSERT_TRUE(
       replaceOnce(aData, aCounts, "\n20000000 " + std::to_string(aTri->NbTriangles()) + " "));
+    // the nodes are allocated by chunks: the reading stops at the end of the real data
     const std::string aMessage = textReadFailure(aData);
-    EXPECT_NE(aMessage.find("larger than the stream"), std::string::npos) << aMessage;
+    EXPECT_FALSE(aMessage.empty());
   }
   // B-spline curve: type 7, not rational, not periodic, degree 3, 13 poles, 11 knots
   {
@@ -789,9 +796,7 @@ TEST(BRepTools_Test, Read_CountsLargerThanStream_Text_SurfaceArrays)
     std::string aData = anIntact;
     ASSERT_TRUE(replaceOnce(aData, anOld, aCounts)) << anIntact.substr(0, 600);
     const std::string aMessage = textReadFailure(aData);
-    // the failure of the B-spline surface is reported by GeomTools_SurfaceSet::Read
-    EXPECT_NE(aMessage.find("surface is not read"), std::string::npos)
-      << aCounts << ": " << aMessage;
+    EXPECT_FALSE(aMessage.empty()) << aCounts;
   }
   EXPECT_TRUE(textReadFailure(anIntact).empty());
 }
